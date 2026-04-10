@@ -1,0 +1,7 @@
+import luxx = libluxx%lib{luxx}
+
+for x: cxx{*}
+{
+  n = $name($x)
+  ./: exe{$n}: $x $luxx
+}

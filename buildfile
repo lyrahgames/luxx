@@ -1,0 +1,3 @@
+import pkgs = libluxx/
+
+./: $pkgs

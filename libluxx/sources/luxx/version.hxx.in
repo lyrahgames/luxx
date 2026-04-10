@@ -1,0 +1,51 @@
+// Copyright © 2026 Markus Pawellek
+//
+// This file is part of `luxx`.
+//
+// `luxx` is free software: you can redistribute it and/or modify it
+// under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License,
+// or (at your option) any later version.
+//
+// `luxx` is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
+//
+#pragma once
+
+// The numeric version format is AAAAABBBBBCCCCCDDDE where:
+//
+// AAAAA - major version number
+// BBBBB - minor version number
+// CCCCC - bugfix version number
+// DDD   - alpha / beta (DDD + 500) version number
+// E     - final (0) / snapshot (1)
+//
+// When DDDE is not 0, 1 is subtracted from AAAAABBBBBCCCCC. For example:
+//
+// Version      AAAAABBBBBCCCCCDDDE
+//
+// 0.1.0        0000000001000000000
+// 0.1.2        0000000001000020000
+// 1.2.3        0000100002000030000
+// 2.2.0-a.1    0000200001999990010
+// 3.0.0-b.2    0000299999999995020
+// 2.2.0-a.1.z  0000200001999990011
+//
+#define LUXX_VERSION       $libluxx.version.project_number$ULL
+#define LUXX_VERSION_STR   "$libluxx.version.project$"
+#define LUXX_VERSION_ID    "$libluxx.version.project_id$"
+#define LUXX_VERSION_FULL  "$libluxx.version$"
+
+#define LUXX_VERSION_MAJOR $libluxx.version.major$
+#define LUXX_VERSION_MINOR $libluxx.version.minor$
+#define LUXX_VERSION_PATCH $libluxx.version.patch$
+
+#define LUXX_PRE_RELEASE   $libluxx.version.pre_release$
+
+#define LUXX_SNAPSHOT_SN   $libluxx.version.snapshot_sn$ULL
+#define LUXX_SNAPSHOT_ID   "$libluxx.version.snapshot_id$"

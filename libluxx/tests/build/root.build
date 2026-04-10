@@ -1,0 +1,14 @@
+cxx.std = latest
+cxx.features.modules = true
+
+using cxx
+
+hxx{*}: extension = hxx
+ixx{*}: extension = ixx
+txx{*}: extension = txx
+cxx{*}: extension = cxx
+mxx{*}: extension = mxx
+
+exe{*}: test = true
+
+test.target = $cxx.target

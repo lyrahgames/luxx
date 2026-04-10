@@ -1,0 +1,21 @@
+: 1
+name: libluxx
+version: 0.1.0-a.0.z
+type: lib,binless
+language: c++
+project: luxx
+summary: C++ library binding to Lua
+license: GPL-3.0-or-later ; GNU General Public License v3.0 or later.
+
+description-file: README.md
+changes-file: CHANGELOG.md
+url: https://github.com/lyrahgames/luxx
+email: lyrahgames@mailbox.org
+
+depends: * build2 >= 0.17.0
+depends: * bpkg >= 0.17.0
+
+depends: liblua ^5.4.8
+
+builds: default experimental : &( +gcc-15+ +clang-20+ +msvc )
+builds: -bindist

@@ -1,0 +1,31 @@
+# Dependencies
+#
+import libs = liblua%lib{lua}
+
+# Sources
+#
+lib{luxx}: luxx/hxx{version} luxx/mxx{**} $libs
+lib{luxx}: bin.binless = true
+
+# Version Header
+#
+luxx/hxx{version}: luxx/in{version} $src_root/manifest
+
+# Include Paths
+#
+out_pfx = [dir_path] $out_root/sources/
+src_pfx = [dir_path] $src_root/sources/
+cxx.poptions =+ "-I$out_pfx" "-I$src_pfx"
+lib{luxx}: cxx.export.poptions = "-I$out_pfx" "-I$src_pfx"
+
+# Interface Dependencies
+#
+lib{luxx}: cxx.export.libs = $libs
+
+# Installation
+#
+{hxx ixx txx mxx}{*}:
+{
+  install         = include/
+  install.subdirs = true
+}
