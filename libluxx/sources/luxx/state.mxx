@@ -1,0 +1,416 @@
+// Copyright © 2026 Markus Pawellek
+//
+// This file is part of `luxx`.
+//
+// `luxx` is free software: you can redistribute it and/or modify it
+// under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License,
+// or (at your option) any later version.
+//
+// `luxx` is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
+//
+module;
+#include <lua.hpp>
+
+export module luxx:state;
+import std;
+
+export namespace luxx {
+
+using number  = lua_Number;
+using integer = lua_Integer;
+
+using czstring = const char*;
+
+struct nil_t {};
+inline constexpr nil_t nil{};
+
+inline constexpr auto stack_min = LUA_MINSTACK;
+
+// typedef int (*lua_CFunction) (lua_State *L);
+template <typename type>
+concept lua_interface = requires(type value, lua_State* L) {
+  { value(L) } noexcept -> std::same_as<int>;
+};
+
+auto default_panic(lua_State* L) noexcept -> int {
+  const char* msg = (lua_type(L, -1) == LUA_TSTRING)
+                        ? lua_tostring(L, -1)
+                        : "error object is not a string";
+  std::println(stderr, "PANIC: unprotected error in call to Lua API ({})", msg);
+  return 0; /* return to Lua to abort */
+}
+
+// status codes:
+// LUA_OK (0): no errors.
+// LUA_ERRRUN: a runtime error.
+// LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
+// LUA_ERRERR: error while running the message handler.
+// LUA_ERRSYNTAX: syntax error during precompilation.
+// LUA_YIELD: the thread (coroutine) yields.
+// LUA_ERRFILE: a file-related error; e.g., it cannot open or read the file.
+
+// enum class type {
+//   LUA_TNIL,
+//   LUA_TNUMBER,
+//   LUA_TBOOLEAN,
+//   LUA_TSTRING,
+//   LUA_TTABLE,
+//   LUA_TFUNCTION,
+//   LUA_TUSERDATA,
+//   LUA_TTHREAD,
+//   LUA_TLIGHTUSERDATA,
+// };
+
+// This class is used to define functions that can be used
+// with `state` and `state_view`.
+// Letting `state` inherit from `state_view` may lead to object slicing.
+// This is mostly what we want. However, it allows us to create a view
+// from an rvalue which we want to prevent.
+struct state_base {
+  // In the Lua C API, almost every function modifies the Lua state.
+  // So, we don't bother with access via `const lua_State*`.
+  using native_handle_type = lua_State*;
+
+  // enum class stdlib {
+  //   base,
+  //   coroutine,
+  //   table,
+  //   io,
+  //   os,
+  //   string,
+  //   utf8,
+  //   math,
+  //   debug,
+  //   package
+  // };
+
+  // void open(this auto const& self) noexcept {
+  //   luaL_requiref(self.native_handle(), libname, libfunc, 1);
+  //   lua_pop(self.native_handle(), 1);
+  // }
+
+  void at_panic(this auto const& self, lua_CFunction panic) noexcept {
+    lua_atpanic(self.native_handle(), panic);
+  }
+
+  void open_stdlibs(this auto const& self) noexcept {
+    luaL_openlibs(self.native_handle());
+  }
+
+  auto reserve(this auto const& self, int size) noexcept {
+    return lua_checkstack(self.native_handle(), size);
+    // luaL_checkstack(self.native_handle(), size, msg);
+  }
+
+  bool is_nil(this auto const& self, int index) noexcept {
+    return (lua_isnil(self.native_handle(), index) == 1);
+  }
+  bool is_number(this auto const& self, int index) noexcept {
+    return (lua_isnumber(self.native_handle(), index) == 1);
+  }
+  bool is_integer(this auto const& self, int index) noexcept {
+    return (lua_isinteger(self.native_handle(), index) == 1);
+  }
+  bool is_boolean(this auto const& self, int index) noexcept {
+    return (lua_isboolean(self.native_handle(), index) == 1);
+  }
+  bool is_string(this auto const& self, int index) noexcept {
+    return (lua_isstring(self.native_handle(), index) == 1);
+  }
+  bool is_table(this auto const& self, int index) noexcept {
+    return (lua_istable(self.native_handle(), index) == 1);
+  }
+
+  void push(this auto const& self, nil_t) noexcept {
+    lua_pushnil(self.native_handle());
+  }
+  void push(this auto const& self, bool value) noexcept {
+    lua_pushboolean(self.native_handle(), static_cast<int>(value));
+  }
+  void push(this auto const& self, number value) noexcept {
+    lua_pushnumber(self.native_handle(), value);
+  }
+  void push(this auto const& self, integer value) noexcept {
+    lua_pushinteger(self.native_handle(), value);
+  }
+  void push(this auto const& self, std::string_view str) noexcept {
+    lua_pushlstring(self.native_handle(), str.data(), str.size());
+  }
+  void push(this auto const& self, czstring str) noexcept {
+    lua_pushstring(self.native_handle(), str);
+  }
+
+  void pop(this auto const& self, int n = 1) noexcept {
+    lua_pop(self.native_handle(), n);
+  }
+
+  void stack_dump(this auto const& self) noexcept {
+    std::println("stack:");
+    const int top = lua_gettop(self.native_handle());
+    for (int i = 1; i <= top; ++i) {
+      int t = lua_type(self.native_handle(), -i);
+      switch (t) {
+        case LUA_TSTRING:
+          std::println("{}", lua_tostring(self.native_handle(), -i));
+          break;
+        case LUA_TBOOLEAN:
+          std::println("{}",
+                       lua_toboolean(self.native_handle(), -i) ? true : false);
+          break;
+        case LUA_TNUMBER:
+          std::println("{}", lua_tonumber(self.native_handle(), -i));
+          break;
+        default:
+          std::println("{}", lua_typename(self.native_handle(), t));
+      }
+    }
+    std::println("---");
+  }
+
+  auto to_string(this auto const& self, int index = -1) noexcept {
+    std::size_t size{};
+    const auto data = lua_tolstring(self.native_handle(), index, &size);
+    return std::string_view{data, size};
+  }
+
+  auto load(this auto const& self, czstring str) noexcept {
+    return luaL_loadstring(self.native_handle(), str);
+  }
+  auto load(this auto const& self,
+            std::string_view str,
+            czstring name = nullptr) noexcept {
+    return luaL_loadbuffer(self.native_handle(), str.data(), str.size(), name);
+  }
+
+  auto load_file(this const auto& self,
+                 std::filesystem::path const& path) noexcept {
+    return luaL_loadfile(self.native_handle(), path.string().c_str());
+  }
+
+  auto protected_call(this auto const& self, int in, int out, int msgh = 0) {
+    return lua_pcall(self.native_handle(), in, out, msgh);
+  }
+
+  auto eval(this auto const& self, std::string_view str) noexcept {
+    return self.load(str) || self.protected_call(0, LUA_MULTRET);
+  }
+
+  auto eval_file(this auto const& self,
+                 std::filesystem::path const& path) noexcept {
+    return self.load_file(path) || self.protected_call(0, LUA_MULTRET);
+  }
+};
+
+template <typename type>
+concept allocator_interface =
+    requires(type value, void* ptr, std::size_t osize, std::size_t nsize) {
+      { value(ptr, osize, nsize) } noexcept -> std::same_as<void*>;
+    };
+
+template <typename type>
+concept static_allocator =
+    requires(void* ptr, std::size_t osize, std::size_t nsize) {
+      { type::operator()(ptr, osize, nsize) } noexcept -> std::same_as<void*>;
+    };
+// may result in compilation errors when operator() is overloaded or template:
+// allocator_interface<type> && allocator_interface<decltype(type::operator())>
+
+template <typename type>
+concept lambda_allocator = allocator_interface<type> &&         //
+                           std::default_initializable<type> &&  //
+                           std::is_empty_v<type>;
+// &&std::convertible_to<type, void* (*)(void*, std::size_t, std::size_t)>;
+
+template <typename type>
+concept stateless_allocator = static_allocator<type> or lambda_allocator<type>;
+
+template <stateless_allocator allocator>
+inline auto new_state() noexcept {
+  // Implement via `if constexpr` instead of function overloads.
+  // Otherwise, Clang complains about ambiguity.
+  // Also, this implementation ensures correct priority.
+  if constexpr (static_allocator<allocator>)
+    return lua_newstate(
+        [](void* /*ud*/, void* ptr, std::size_t osize, std::size_t nsize) {
+          return allocator::operator()(ptr, osize, nsize);
+        },
+        nullptr);
+  else
+    return lua_newstate(
+        [](void* /*ud*/, void* ptr, std::size_t osize, std::size_t nsize) {
+          return allocator{}(ptr, osize, nsize);
+        },
+        nullptr);
+}
+
+inline auto new_state(stateless_allocator auto allocator) noexcept {
+  return new_state<decltype(allocator)>();
+}
+
+template <typename type>
+concept stateful_allocator = requires(type const& value, void* ud) {
+  { value.get() } noexcept -> std::convertible_to<void*>;
+  { static_cast<decltype(value.get())>(ud) } noexcept;
+  requires allocator_interface<decltype(*value.get())>;
+};
+
+inline auto new_state(stateful_allocator auto const& alloc) noexcept {
+  return lua_newstate(
+      [](void* ud, void* ptr, std::size_t osize, std::size_t nsize) {
+        return (*static_cast<decltype(alloc.get())>(ud))(ptr, osize, nsize);
+      },
+      alloc.get());
+}
+
+template <allocator_interface allocator>
+struct allocator_reference {
+  constexpr allocator_reference(allocator& alloc) noexcept : ptr{&alloc} {}
+  constexpr allocator_reference(allocator const&&) = delete;
+  constexpr auto get() const noexcept -> allocator* { return ptr; }
+  allocator* ptr;
+};
+
+template <typename type>
+concept standard_allocator =
+    requires(type value, std::size_t size) {
+      { *value.allocate(size) } -> std::same_as<typename type::value_type&>;
+      { value.deallocate(value.allocate(size), size) };
+    } && std::copy_constructible<type> && std::equality_comparable<type> &&
+    (not allocator_interface<type>);
+
+template <typename type>
+concept stateless_standard_allocator =
+    standard_allocator<type> &&  //
+    std::default_initializable<type> && std::is_empty_v<type>;
+
+template <standard_allocator allocator_type = std::allocator<std::max_align_t>>
+struct as_allocator_interface : std::allocator_traits<allocator_type>  //
+                                ::template rebind_alloc<std::max_align_t> {
+  using allocator = typename std::allocator_traits<
+      allocator_type>::template rebind_alloc<std::max_align_t>;
+  using memory = std::allocator_traits<allocator>;
+
+  using allocator::allocator;
+  constexpr as_allocator_interface(allocator_type const& alloc)
+      : allocator{alloc} {}
+
+  auto operator()(void* ptr, std::size_t osize, std::size_t nsize) noexcept
+      -> void* {
+    auto& alloc = static_cast<allocator&>(*this);
+    if (nsize == 0) {
+      if (ptr)
+        memory::deallocate(alloc, static_cast<std::max_align_t*>(ptr), osize);
+      return nullptr;
+    }
+    try {
+      auto new_ptr = memory::allocate(alloc, nsize);
+      if (ptr) {
+        if (osize > 0) std::memcpy(new_ptr, ptr, std::min(osize, nsize));
+        memory::deallocate(alloc, static_cast<std::max_align_t*>(ptr), osize);
+      }
+      return new_ptr;
+    } catch (...) {
+      return nullptr;  // Lua expects NULL on OOM
+    }
+  }
+};
+
+inline auto new_state(stateless_standard_allocator auto alloc) noexcept {
+  return new_state(as_allocator_interface{alloc});
+}
+
+struct default_allocator {
+  static auto operator()(void* ptr,
+                         std::size_t /*osize*/,
+                         std::size_t nsize) noexcept -> void* {
+    if (nsize == 0) {
+      std::free(ptr);
+      return nullptr;
+    }
+    return std::realloc(ptr, nsize);
+  }
+};
+
+template <typename allocator_type = default_allocator>
+struct state : state_base, private allocator_type {
+  using base      = state_base;
+  using allocator = allocator_type;
+
+  state()
+    requires stateless_allocator<allocator>
+  {}
+
+  state(allocator alloc)
+    requires stateless_allocator<allocator>
+      : allocator{alloc} {}
+
+  state(allocator&& alloc)
+    requires stateful_allocator<allocator> && std::movable<allocator>
+      : allocator{std::move(alloc)} {}
+
+  state(allocator const& alloc)
+    requires stateful_allocator<allocator> && std::copyable<allocator>
+      : allocator{alloc} {}
+
+  constexpr auto native_handle() const noexcept -> native_handle_type {
+    return handle.get();
+  }
+
+  constexpr operator native_handle_type() const noexcept {
+    return handle.get();
+  }
+
+ private:
+  static auto valid_new_state(allocator const& alloc) {
+    auto L = new_state(alloc);
+    if (not L) [[unlikely]]
+      throw std::bad_alloc();
+    return L;
+  }
+
+  void init() {
+    if (not handle) [[unlikely]]
+      throw std::bad_alloc();
+    at_panic(default_panic);
+  }
+
+  struct deleter {
+    static void operator()(lua_State* lua) noexcept {
+      if (lua) lua_close(lua);
+    }
+  };
+
+  std::unique_ptr<lua_State, deleter> handle{
+      valid_new_state(static_cast<allocator const&>(*this))};
+};
+
+template <stateless_standard_allocator allocator>
+state(allocator) -> state<as_allocator_interface<allocator>>;
+
+struct state_view : state_base {
+  using base = state_base;
+
+  template <typename allocator>
+  state_view(state<allocator> const& s) noexcept : handle{s.native_handle()} {}
+
+  template <typename allocator>
+  state_view(state<allocator> const&&) = delete ("cannot bind rvalue to view");
+
+  constexpr auto native_handle() const noexcept -> native_handle_type {
+    return handle;
+  }
+
+  constexpr operator native_handle_type() const noexcept { return handle; }
+
+ private:
+  const native_handle_type handle{};
+};
+
+}  // namespace luxx

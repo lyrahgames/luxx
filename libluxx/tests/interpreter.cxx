@@ -15,8 +15,20 @@
 // You should have received a copy of the GNU General Public License
 // along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
 //
-export module luxx;
+#include <lua.hpp>
+import std;
+import luxx;
 
-export import :version;
+int main() {
+  luxx::state state{};
+  state.open_stdlibs();
 
-export import :state;
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    int error = state.eval(line);
+    if (error) {
+      std::println("ERROR: {}", state.to_string());
+      state.pop();
+    }
+  }
+}
