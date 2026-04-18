@@ -20,18 +20,10 @@ module;
 
 export module luxx:state;
 import std;
+import :types;
+import :stack;
 
 export namespace luxx {
-
-using number  = lua_Number;
-using integer = lua_Integer;
-
-using czstring = const char*;
-
-struct nil_t {};
-inline constexpr nil_t nil{};
-
-inline constexpr auto stack_min = LUA_MINSTACK;
 
 // typedef int (*lua_CFunction) (lua_State *L);
 template <typename type>
@@ -47,27 +39,6 @@ auto default_panic(lua_State* L) noexcept -> int {
   return 0; /* return to Lua to abort */
 }
 
-// status codes:
-// LUA_OK (0): no errors.
-// LUA_ERRRUN: a runtime error.
-// LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
-// LUA_ERRERR: error while running the message handler.
-// LUA_ERRSYNTAX: syntax error during precompilation.
-// LUA_YIELD: the thread (coroutine) yields.
-// LUA_ERRFILE: a file-related error; e.g., it cannot open or read the file.
-
-// enum class type {
-//   LUA_TNIL,
-//   LUA_TNUMBER,
-//   LUA_TBOOLEAN,
-//   LUA_TSTRING,
-//   LUA_TTABLE,
-//   LUA_TFUNCTION,
-//   LUA_TUSERDATA,
-//   LUA_TTHREAD,
-//   LUA_TLIGHTUSERDATA,
-// };
-
 // This class is used to define functions that can be used
 // with `state` and `state_view`.
 // Letting `state` inherit from `state_view` may lead to object slicing.
@@ -78,24 +49,6 @@ struct state_base {
   // So, we don't bother with access via `const lua_State*`.
   using native_handle_type = lua_State*;
 
-  // enum class stdlib {
-  //   base,
-  //   coroutine,
-  //   table,
-  //   io,
-  //   os,
-  //   string,
-  //   utf8,
-  //   math,
-  //   debug,
-  //   package
-  // };
-
-  // void open(this auto const& self) noexcept {
-  //   luaL_requiref(self.native_handle(), libname, libfunc, 1);
-  //   lua_pop(self.native_handle(), 1);
-  // }
-
   void at_panic(this auto const& self, lua_CFunction panic) noexcept {
     lua_atpanic(self.native_handle(), panic);
   }
@@ -104,85 +57,10 @@ struct state_base {
     luaL_openlibs(self.native_handle());
   }
 
-  auto reserve(this auto const& self, int size) noexcept {
-    return lua_checkstack(self.native_handle(), size);
-    // luaL_checkstack(self.native_handle(), size, msg);
-  }
-
-  bool is_nil(this auto const& self, int index) noexcept {
-    return (lua_isnil(self.native_handle(), index) == 1);
-  }
-  bool is_number(this auto const& self, int index) noexcept {
-    return (lua_isnumber(self.native_handle(), index) == 1);
-  }
-  bool is_integer(this auto const& self, int index) noexcept {
-    return (lua_isinteger(self.native_handle(), index) == 1);
-  }
-  bool is_boolean(this auto const& self, int index) noexcept {
-    return (lua_isboolean(self.native_handle(), index) == 1);
-  }
-  bool is_string(this auto const& self, int index) noexcept {
-    return (lua_isstring(self.native_handle(), index) == 1);
-  }
-  bool is_table(this auto const& self, int index) noexcept {
-    return (lua_istable(self.native_handle(), index) == 1);
-  }
-
-  void push(this auto const& self, nil_t) noexcept {
-    lua_pushnil(self.native_handle());
-  }
-  void push(this auto const& self, bool value) noexcept {
-    lua_pushboolean(self.native_handle(), static_cast<int>(value));
-  }
-  void push(this auto const& self, number value) noexcept {
-    lua_pushnumber(self.native_handle(), value);
-  }
-  void push(this auto const& self, integer value) noexcept {
-    lua_pushinteger(self.native_handle(), value);
-  }
-  void push(this auto const& self, std::string_view str) noexcept {
-    lua_pushlstring(self.native_handle(), str.data(), str.size());
-  }
-  void push(this auto const& self, czstring str) noexcept {
-    lua_pushstring(self.native_handle(), str);
-  }
-
-  void pop(this auto const& self, int n = 1) noexcept {
-    lua_pop(self.native_handle(), n);
-  }
-
-  void stack_dump(this auto const& self) noexcept {
-    std::println("stack:");
-    const int top = lua_gettop(self.native_handle());
-    for (int i = 1; i <= top; ++i) {
-      int t = lua_type(self.native_handle(), -i);
-      switch (t) {
-        case LUA_TSTRING:
-          std::println("{}", lua_tostring(self.native_handle(), -i));
-          break;
-        case LUA_TBOOLEAN:
-          std::println("{}",
-                       lua_toboolean(self.native_handle(), -i) ? true : false);
-          break;
-        case LUA_TNUMBER:
-          std::println("{}", lua_tonumber(self.native_handle(), -i));
-          break;
-        default:
-          std::println("{}", lua_typename(self.native_handle(), t));
-      }
-    }
-    std::println("---");
-  }
-
-  auto to_string(this auto const& self, int index = -1) noexcept {
-    std::size_t size{};
-    const auto data = lua_tolstring(self.native_handle(), index, &size);
-    return std::string_view{data, size};
-  }
-
   auto load(this auto const& self, czstring str) noexcept {
     return luaL_loadstring(self.native_handle(), str);
   }
+
   auto load(this auto const& self,
             std::string_view str,
             czstring name = nullptr) noexcept {
@@ -198,8 +76,15 @@ struct state_base {
     return lua_pcall(self.native_handle(), in, out, msgh);
   }
 
-  auto eval(this auto const& self, std::string_view str) noexcept {
-    return self.load(str) || self.protected_call(0, LUA_MULTRET);
+  [[nodiscard]] auto eval(this auto const& self, std::string_view str) noexcept
+      -> std::expected<stack_range, error> {
+    struct stack stack{self.native_handle()};
+    const auto first  = stack.end();
+    const auto status = static_cast<status_code>(
+        self.load(str) || self.protected_call(0, LUA_MULTRET));
+    if (status != status_code::ok)
+      return std::unexpected(error{status, static_cast<string>(stack.top())});
+    return stack_range{first, stack.end()};
   }
 
   auto eval_file(this auto const& self,

@@ -1,0 +1,207 @@
+module;
+#include <cassert>
+#include <lua.hpp>
+
+export module luxx:stack_value;
+import std;
+import :types;
+
+export namespace luxx {
+
+inline void push(lua_State* state, nil_t) noexcept {
+  lua_pushnil(state);
+}
+
+inline void push(lua_State* state) noexcept {
+  push(state, nil);
+}
+
+inline void push(lua_State* state, bool value) noexcept {
+  lua_pushboolean(state, static_cast<int>(value));
+}
+
+inline void push(lua_State* state, number value) noexcept {
+  lua_pushnumber(state, value);
+}
+
+inline void push(lua_State* state, integer value) noexcept {
+  lua_pushinteger(state, value);
+}
+
+inline void push(lua_State* state, std::integral auto value) noexcept {
+  push(state, static_cast<integer>(value));
+}
+
+inline void push(lua_State* state, std::string_view str) noexcept {
+  // Lua will make or reuse an internal copy of the given string. So, the
+  // memory can be freed or reused immediately after the function returns.
+  // Returns a pointer to the internal copy of the string
+  lua_pushlstring(state, str.data(), str.size());
+}
+
+inline void push(lua_State* state, const char* str) noexcept {
+  lua_pushstring(state, str);
+}
+
+struct stack_iterator;
+
+struct stack_value {
+  using state_pointer_type = lua_State*;
+  using stack_index_type   = int;
+
+  const state_pointer_type state;
+  const stack_index_type index;
+
+  constexpr void check() noexcept {
+    assert(state);
+    assert((1 <= index) && (index <= lua_gettop(state)));
+  }
+
+  stack_value(state_pointer_type ptr) noexcept
+      : state{ptr}, index{lua_gettop(ptr)} {}
+
+  stack_value(state_pointer_type ptr, stack_index_type idx) noexcept
+      : state{ptr}, index{(idx < 0) ? (lua_gettop(ptr) + idx + 1) : idx} {
+    check();
+  }
+
+  constexpr stack_value(state_pointer_type ptr,
+                        std::unsigned_integral auto idx) noexcept
+      : state{ptr}, index{static_cast<stack_index_type>(idx)} {
+    check();
+  }
+
+  auto operator=(stack_value value) noexcept -> stack_value& {
+    assert(state_pointer() == value.state_pointer());
+    lua_copy(state_pointer(), value.stack_index(), stack_index());
+    return *this;
+  }
+
+  auto operator=(auto value) noexcept -> stack_value&
+    requires requires(state_pointer_type state) { push(state, value); }
+  {
+    push(state_pointer(), value);
+    lua_replace(state_pointer(), stack_index());
+    return *this;
+  }
+
+  // constexpr auto operator&() const noexcept -> stack_iterator {
+  //   return stack_iterator{state_pointer(), stack_index()};
+  // }
+
+  constexpr auto state_pointer() const noexcept -> state_pointer_type {
+    return state;
+  }
+
+  constexpr auto stack_index() const noexcept -> stack_index_type {
+    return index;
+  }
+
+  auto type() const noexcept -> type_id {
+    return static_cast<type_id>(lua_type(state_pointer(), stack_index()));
+  }
+
+  // auto subtype() const noexcept -> std::optional<number_subtype> {
+  //   if (type() != type_id::number) return {};
+  //   if (is<lua_Integer>()) return number_subtype::integer;
+  //   return number_subtype::real;
+  // }
+
+  auto type_name(type_id tid) const noexcept {
+    return lua_typename(state_pointer(), static_cast<int>(tid));
+  }
+
+  auto type_name() const noexcept { return type_name(type()); }
+
+  // auto subtype_name() const noexcept {
+  //   if (auto sub = subtype()) {
+  //     if (sub.value() == number_subtype::integer) return "integer";
+  //     return "float";
+  //   }
+  //   return "";
+  // }
+
+  explicit operator bool() const noexcept {
+    return static_cast<bool>(lua_toboolean(state_pointer(), stack_index()));
+  }
+
+  template <typename type>
+  explicit operator type() const {
+    return try_cast<type>().value();
+  }
+
+  template <std::same_as<bool>>
+  auto try_cast() const noexcept -> std::optional<bool> {
+    return static_cast<bool>(*this);
+  }
+
+  template <std::signed_integral type>
+  auto try_cast() const noexcept -> std::optional<type> {
+    int valid;
+    const auto result = lua_tointegerx(state_pointer(), stack_index(), &valid);
+    if (not valid) return {};
+    return static_cast<type>(result);
+  }
+
+  template <std::floating_point type>
+  auto try_cast() const noexcept -> std::optional<type> {
+    int valid;
+    const auto result = lua_tonumberx(state_pointer(), stack_index(), &valid);
+    if (not valid) return {};
+    return static_cast<type>(result);
+  }
+
+  template <std::same_as<std::string_view>>
+  auto try_cast() const noexcept -> std::optional<std::string_view> {
+    std::size_t size{};
+    const auto data = lua_tolstring(state_pointer(), stack_index(), &size);
+    if (not data) return {};
+    return std::string_view{data, size};
+  }
+
+  // friend inline bool operator==(stack_value x, stack_value y) noexcept {}
+  friend inline bool operator==(stack_value x, auto y) noexcept {
+    auto cast = x.try_cast<decltype(y)>();
+    return cast && (cast.value() == y);
+  }
+  friend inline bool operator==(stack_value x, czstring y) noexcept {
+    auto cast = x.try_cast<string>();
+    return cast && (cast.value() == y);
+  }
+
+  friend inline bool operator==(auto x, stack_value y) noexcept {
+    return y == x;
+  }
+};
+
+inline auto visit(stack_value value, auto&& f) {
+  const auto tid = value.type();
+  switch (tid) {
+    case type_id::nil:
+      return std::invoke(std::forward<decltype(f)>(f), nil);
+      break;
+
+    case type_id::boolean:
+      return std::invoke(std::forward<decltype(f)>(f),
+                         static_cast<bool>(value));
+      break;
+
+    case type_id::number:
+      if (lua_isinteger(value.state_pointer(), value.stack_index()))
+        return std::invoke(std::forward<decltype(f)>(f),
+                           static_cast<integer>(value));
+      return std::invoke(std::forward<decltype(f)>(f),
+                         static_cast<number>(value));
+      break;
+
+    case type_id::string:
+      return std::invoke(std::forward<decltype(f)>(f),
+                         static_cast<std::string_view>(value));
+      break;
+
+    default:
+      throw std::invalid_argument(value.type_name());
+  }
+}
+
+}  // namespace luxx

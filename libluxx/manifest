@@ -16,6 +16,7 @@ depends: * build2 >= 0.17.0
 depends: * bpkg >= 0.17.0
 
 depends: liblua ^5.4.8
+depends: libxstd == 0.1.0
 
 builds: default experimental : &( +gcc-15+ +clang-20+ +msvc )
 builds: -bindist

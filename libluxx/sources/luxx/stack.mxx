@@ -1,0 +1,572 @@
+module;
+#include <cassert>
+#include <lua.hpp>
+
+export module luxx:stack;
+import std;
+import :types;
+import :stack_value;
+
+export namespace luxx {
+
+// struct stack_value_interface {
+//   auto type(this auto const& self) noexcept -> type_id {
+//     return static_cast<type_id>(lua_type(self.native_handle(), self.index()));
+//   }
+
+//   auto subtype(this auto const& self) noexcept
+//       -> std::optional<number_subtype> {
+//     if (self.type() != type_id::number) return {};
+//     if (self.template is<lua_Integer>()) return number_subtype::integer;
+//     return number_subtype::real;
+//   }
+
+//   auto type_name(this auto const& self) noexcept {
+//     return lua_typename(self.native_handle(), static_cast<int>(self.type()));
+//   }
+
+//   auto subtype_name(this auto const& self) noexcept {
+//     if (auto sub = self.subtype()) {
+//       if (sub.value() == number_subtype::integer) return "integer";
+//       return "float";
+//     }
+//     return "";
+//   }
+
+//   template <std::same_as<bool>>
+//   bool is(this auto const& self) noexcept {
+//     return (lua_isboolean(self.native_handle(), self.index()) == 1);
+//   }
+
+//   template <std::floating_point>
+//   bool is(this auto const& self) noexcept {
+//     return (lua_isnumber(self.native_handle(), self.index()) == 1);
+//   }
+
+//   template <std::signed_integral>
+//   bool is(this auto const& self) noexcept {
+//     return (lua_isinteger(self.native_handle(), self.index()) == 1);
+//   }
+
+//   template <std::same_as<std::string_view>>
+//   bool is(this auto const& self) noexcept {
+//     return (lua_isstring(self.native_handle(), self.index()) == 1);
+//   }
+
+//   // template <std::same_as<nil_t>>
+//   // auto as(this auto const& self) noexcept -> std::optional<nil_t> {
+//   //   if (lua_isnil(self.native_handle(), self.index())) return nil;
+//   //   return {};
+//   // }
+
+//   template <std::same_as<bool>>
+//   auto as(this auto const& self) noexcept -> std::optional<bool> {
+//     if (not self.template is<bool>()) return {};
+//     return lua_toboolean(self.native_handle(), self.index());
+//   }
+
+//   template <std::signed_integral type>
+//   auto as(this auto const& self) noexcept -> std::optional<type> {
+//     int valid;
+//     const auto result =
+//         lua_tointegerx(self.native_handle(), self.index(), &valid);
+//     if (valid) return result;
+//     return {};
+//   }
+
+//   template <std::floating_point type>
+//   auto as(this auto const& self) noexcept -> std::optional<type> {
+//     int valid;
+//     const auto result =
+//         lua_tonumberx(self.native_handle(), self.index(), &valid);
+//     if (valid) return result;
+//     return {};
+//   }
+
+//   template <std::same_as<std::string_view>>
+//   auto as(this auto const& self) noexcept -> std::optional<std::string_view> {
+//     std::size_t size{};
+//     const auto data = lua_tolstring(self.native_handle(), self.index(), &size);
+//     if (data) return std::string_view{data, size};
+//     return {};
+//   }
+// };
+
+// struct stack_interface {
+//   using index_type = int;
+//   using number     = lua_Number;
+//   using integer    = lua_Integer;
+//   using czstring   = const char*;
+
+//   auto type_name(this auto const& self, type_id id) noexcept {
+//     return lua_typename(self.native_handle(), static_cast<int>(id));
+//   }
+
+//   bool try_reserve(this auto const& self, int size) noexcept {
+//     return lua_checkstack(self.native_handle(), size);
+//   }
+
+//   void reserve(this auto const& self, int size) {
+//     if (not self.try_reserve(size)) [[unlikely]]
+//       throw std::runtime_error{
+//           "Failed to reserve required amount of stack slots."};
+//   }
+
+//   auto size(this auto const& self) noexcept {
+//     return lua_gettop(self.native_handle());
+//   }
+
+//   void resize(this auto const& self, int index) noexcept {
+//     lua_settop(self.native_handle(), index);
+//   }
+
+//   void clear(this auto const& self) noexcept { self.resize(0); }
+
+//   void push_copy_from(this auto const& self, int index) noexcept {
+//     lua_pushvalue(self.native_handle(), index);
+//   }
+
+//   void rotate(this auto const& self, int index, int rot) noexcept {
+//     lua_rotate(self.native_handle(), index, rot);
+//   }
+
+//   void insert_top_at(this auto const& self, int index) noexcept {
+//     lua_insert(self.native_handle(), index);
+//   }
+
+//   void remove(this auto const& self, int index) noexcept {
+//     lua_remove(self.native_handle(), index);
+//   }
+
+//   void move_top_to(this auto const& self, int index) noexcept {
+//     lua_replace(self.native_handle(), index);
+//   }
+
+//   void copy(this auto const& self, int from, int to) noexcept {
+//     lua_copy(self.native_handle(), from, to);
+//   }
+
+//   void push(this auto const& self) noexcept {
+//     lua_pushnil(self.native_handle());
+//   }
+
+//   void push(this auto const& self, bool value) noexcept {
+//     lua_pushboolean(self.native_handle(), static_cast<int>(value));
+//   }
+
+//   void push(this auto const& self, number value) noexcept {
+//     lua_pushnumber(self.native_handle(), value);
+//   }
+
+//   void push(this auto const& self, std::integral auto value) noexcept {
+//     self.push(static_cast<integer>(value));
+//   }
+
+//   void push(this auto const& self, integer value) noexcept {
+//     lua_pushinteger(self.native_handle(), value);
+//   }
+
+//   void push(this auto const& self, std::string_view str) noexcept {
+//     // Lua will make or reuse an internal copy of the given string. So, the
+//     // memory can be freed or reused immediately after the function returns.
+//     // Returns a pointer to the internal copy of the string
+//     lua_pushlstring(self.native_handle(), str.data(), str.size());
+//   }
+
+//   void push(this auto const& self, czstring str) noexcept {
+//     lua_pushstring(self.native_handle(), str);
+//   }
+
+//   auto type_at(this auto const& self, int index) noexcept -> type_id {
+//     return static_cast<type_id>(lua_type(self.native_handle(), index));
+//   }
+
+//   bool is_nil(this auto const& self, int index) noexcept {
+//     return (lua_isnil(self.native_handle(), index) == 1);
+//   }
+
+//   bool is_number(this auto const& self, int index) noexcept {
+//     return (lua_isnumber(self.native_handle(), index) == 1);
+//   }
+
+//   bool is_integer(this auto const& self, int index) noexcept {
+//     return (lua_isinteger(self.native_handle(), index) == 1);
+//   }
+
+//   bool is_bool(this auto const& self, int index) noexcept {
+//     return (lua_isboolean(self.native_handle(), index) == 1);
+//   }
+
+//   bool is_string(this auto const& self, int index) noexcept {
+//     return (lua_isstring(self.native_handle(), index) == 1);
+//   }
+
+//   bool is_table(this auto const& self, int index) noexcept {
+//     return (lua_istable(self.native_handle(), index) == 1);
+//   }
+
+//   auto to_bool(this auto const& self, int index = -1) noexcept
+//       -> std::optional<bool> {
+//     if (not self.is_bool(index)) return {};
+//     return lua_toboolean(self.native_handle(), index);
+//   }
+
+//   auto to_integer(this auto const& self, int index = -1) noexcept
+//       -> std::optional<integer> {
+//     int valid;
+//     const auto result = lua_tointegerx(self.native_handle(), index, &valid);
+//     if (valid) return result;
+//     return {};
+//   }
+
+//   auto to_number(this auto const& self, int index = -1) noexcept
+//       -> std::optional<number> {
+//     int valid;
+//     const auto result = lua_tonumberx(self.native_handle(), index, &valid);
+//     if (valid) return result;
+//     return {};
+//   }
+
+//   auto to_string(this auto const& self, int index = -1) noexcept
+//       -> std::optional<std::string_view> {
+//     std::size_t size{};
+//     const auto data = lua_tolstring(self.native_handle(), index, &size);
+//     if (data) return std::string_view{data, size};
+//     return {};
+//   }
+
+//   void pop(this auto const& self, int n = 1) noexcept {
+//     lua_pop(self.native_handle(), n);
+//   }
+
+//   void stack_dump(this auto const& self) noexcept {
+//     std::println("stack:");
+//     const int top = self.size();
+//     for (int i = 1; i <= top; ++i) {
+//       const auto pos = top - i + 1;
+//       const auto tid = self.type_at(pos);
+//       switch (tid) {
+//         case type_id::string:
+//           std::println("{:>3}: {:<10} = {}", pos, self.type_name(tid),
+//                        self.to_string(pos).value());
+//           break;
+//         case type_id::boolean:
+//           std::println("{:>3}: {:<10} = {}", pos, self.type_name(tid),
+//                        self.to_bool(pos).value());
+//           break;
+//         case type_id::number:
+//           if (self.is_integer(pos))
+//             std::println("{:>3}: {:<10} = {}", pos, "integer",
+//                          self.to_integer(pos).value());
+//           else
+//             std::println("{:>3}: {:<10} = {}", pos, self.type_name(tid),
+//                          self.to_number(pos).value());
+//           break;
+//         default:
+//           std::println("{:>3}: {:<10}", pos, self.type_name(tid));
+//       }
+//     }
+//     std::println("---");
+//   }
+// };
+
+// struct stack_value_view : stack_value_interface {
+//   using native_handle_type = lua_State*;
+//   using index_type         = int;
+
+//   constexpr stack_value_view(native_handle_type ptr, index_type idx) noexcept
+//       : handle{ptr}, _index{(idx < 0) ? (lua_gettop(ptr) + idx + 1) : idx} {}
+
+//   constexpr stack_value_view(native_handle_type ptr,
+//                              std::unsigned_integral auto idx) noexcept
+//       : handle{ptr}, _index{static_cast<index_type>(idx)} {}
+
+//   auto operator=(stack_value_view value) noexcept {
+//     lua_copy(native_handle(), value.stack_index(), _index);
+//   }
+
+//   template <typename type>
+//   explicit constexpr operator type() {
+//     return as<type>().value();
+//   }
+
+//   constexpr auto native_handle() const noexcept -> native_handle_type {
+//     return handle;
+//   }
+//   constexpr auto index() const noexcept -> index_type { return _index; }
+//   constexpr auto stack_index() const noexcept -> index_type { return _index; }
+
+//  private:
+//   const native_handle_type handle{};
+//   const index_type _index{};
+// };
+
+struct stack_iterator {
+  using state_pointer_type = lua_State*;
+  using index_type         = int;
+
+  using iterator_category = std::random_access_iterator_tag;
+  using value_type        = stack_value;
+  using difference_type   = index_type;
+  using pointer           = stack_iterator;
+  using reference         = stack_value;
+
+  // constexpr stack_iterator() noexcept {}
+
+  constexpr auto state_pointer() const noexcept { return state; }
+  constexpr auto stack_index() const noexcept { return index; }
+  constexpr auto stack_index() noexcept -> index_type& { return index; }
+
+  constexpr auto operator*() const noexcept -> reference {
+    return {state_pointer(), stack_index()};
+  }
+
+  // constexpr auto operator->() const noexcept -> pointer {}
+
+  constexpr auto operator[](difference_type n) const noexcept -> reference {
+    return {state_pointer(), stack_index() + n};
+  }
+
+  constexpr auto operator++() noexcept {
+    ++stack_index();
+    return *this;
+  }
+  constexpr auto operator++(int) noexcept {
+    auto result = *this;
+    ++stack_index();
+    return result;
+  }
+
+  constexpr auto operator--() noexcept {
+    --stack_index();
+    return *this;
+  }
+  constexpr auto operator--(int) noexcept {
+    auto result = *this;
+    --stack_index();
+    return result;
+  }
+
+  constexpr auto operator+=(difference_type delta) noexcept -> stack_iterator& {
+    stack_index() += delta;
+    return *this;
+  }
+
+  constexpr auto operator-=(difference_type delta) noexcept -> stack_iterator& {
+    stack_index() -= delta;
+    return *this;
+  }
+
+  friend constexpr auto operator+(stack_iterator it,
+                                  difference_type delta) noexcept {
+    return it += delta;
+  }
+  friend constexpr auto operator+(difference_type delta,
+                                  stack_iterator it) noexcept {
+    return it + delta;
+  }
+  friend constexpr auto operator-(stack_iterator it,
+                                  difference_type delta) noexcept {
+    return it -= delta;
+  }
+
+  friend constexpr auto operator-(stack_iterator x, stack_iterator y) noexcept {
+    return x.stack_index() - y.stack_index();
+  }
+
+  // friend constexpr auto operator<=>(stack_iterator x,
+  //                                   stack_iterator y) noexcept = default;
+
+  constexpr bool operator==(const stack_iterator& other) const noexcept {
+    return stack_index() == other.stack_index();
+  }
+  constexpr bool operator!=(const stack_iterator& other) const noexcept {
+    return !(*this == other);
+  }
+  constexpr bool operator<(const stack_iterator& other) const noexcept {
+    return stack_index() < other.stack_index();
+  }
+  constexpr bool operator>(const stack_iterator& other) const noexcept {
+    return stack_index() > other.stack_index();
+  }
+  constexpr bool operator<=(const stack_iterator& other) const noexcept {
+    return stack_index() <= other.stack_index();
+  }
+  constexpr bool operator>=(const stack_iterator& other) const noexcept {
+    return stack_index() >= other.stack_index();
+  }
+
+  const state_pointer_type state{};
+  index_type index{};
+};
+
+// struct stack_view : stack_interface {
+//   using state_pointer_type = lua_State*;
+//   using native_handle_type = lua_State*;
+//   using index_type         = int;
+//   using value_type         = stack_value_view;
+//   using iterator           = stack_iterator;
+
+//   constexpr stack_view(native_handle_type ptr) noexcept : handle{ptr} {}
+
+//   constexpr auto native_handle() const noexcept -> native_handle_type {
+//     return handle;
+//   }
+
+//   constexpr auto operator[](index_type index) const noexcept
+//       -> stack_value_view {
+//     return {handle, index};
+//   }
+
+//   constexpr auto begin() const noexcept -> iterator {
+//     return iterator{native_handle(), std::min(1, size())};
+//   }
+
+//   constexpr auto end() const noexcept -> iterator {
+//     return iterator{native_handle(), size()};
+//   }
+
+//  private:
+//   const native_handle_type handle{};
+// };
+
+struct stack_range {
+  using index_type = stack_index_type;
+
+  const stack_iterator _it;
+  const size_type _size;
+
+  constexpr stack_range(stack_iterator it, size_type n) noexcept
+      : _it{it}, _size{n} {}
+
+  constexpr stack_range(stack_iterator first, stack_iterator last) noexcept
+      : _it{first}, _size{static_cast<size_type>(last - first)} {
+    assert(first.state_pointer() == last.state_pointer());
+  }
+
+  constexpr auto state_pointer() const noexcept -> state_pointer_type {
+    return _it.state_pointer();
+  }
+
+  constexpr auto size() const noexcept -> size_type { return _size; }
+
+  constexpr bool empty() const noexcept { return (size() == 0); }
+
+  constexpr auto operator[](index_type index) const noexcept -> stack_value {
+    return *(_it + index);
+  }
+
+  constexpr auto begin() const noexcept -> stack_iterator { return _it; }
+
+  constexpr auto end() const noexcept -> stack_iterator { return _it + size(); }
+};
+
+struct stack {
+  using state_pointer_type = lua_State*;
+  using index_type         = int;
+  using size_type          = unsigned int;
+  using difference_type    = int;
+  using iterator           = stack_iterator;
+  using value_type         = stack_value;
+
+  const state_pointer_type state;
+
+  constexpr stack(state_pointer_type ptr) noexcept : state{ptr} {}
+
+  constexpr auto state_pointer() const noexcept -> state_pointer_type {
+    return state;
+  }
+
+  constexpr auto operator[](index_type index) const noexcept -> stack_value {
+    return {state_pointer(), index};
+  }
+
+  constexpr auto begin() const noexcept -> iterator {
+    return iterator{state_pointer(), 1};
+  }
+
+  constexpr auto end() const noexcept -> iterator {
+    return iterator{state_pointer(), 1 + static_cast<index_type>(size())};
+  }
+
+  auto top() const noexcept -> stack_value { return operator[](-1); }
+
+  void push(auto... value) noexcept {
+    (luxx::push(state_pointer(), value), ...);
+  }
+
+  void pop(size_type n = 1) noexcept { lua_pop(state_pointer(), n); }
+
+  // maybe: try_reserve_extra
+  bool try_reserve(size_type extra) noexcept {
+    // Ensures that the stack has space for at least n extra elements,
+    // that is, that you can safely push up to n values into it.
+    return lua_checkstack(state_pointer(), extra);
+  }
+
+  // maybe: reserve_extra
+  void reserve(size_type extra) {
+    if (not try_reserve(extra)) [[unlikely]]
+      throw std::runtime_error{
+          "Failed to reserve required amount of stack slots."};
+  }
+
+  auto size() const noexcept -> size_type {
+    // Will not return negative number.
+    return static_cast<size_type>(lua_gettop(state_pointer()));
+  }
+
+  // Function also accepts negative integers.
+  // resize(-1) does nothing
+  // resize(-2) removes the top element
+  // Better name needed...
+  void resize(int index) noexcept {
+    // This function can run arbitrary code when removing
+    // an index marked as to-be-closed from the stack.
+    lua_settop(state_pointer(), index);
+  }
+
+  void clear() noexcept { resize(0); }
+
+  void push_copy_from(index_type index) noexcept {
+    lua_pushvalue(state_pointer(), index);
+  }
+
+  // maybe use bitshift operators for that:
+  // &stack[i] << n;
+  // Bitshift operators should probably only act on iterators.
+  void rotate(index_type index, difference_type rot) noexcept {
+    lua_rotate(state_pointer(), index, rot);
+  }
+
+  void insert_top_at(index_type index) noexcept {
+    lua_insert(state_pointer(), index);
+  }
+
+  void move_top_to(index_type index) noexcept {
+    lua_replace(state_pointer(), index);
+  }
+
+  void remove(index_type index) noexcept { lua_remove(state_pointer(), index); }
+
+  void copy(index_type from, index_type to) noexcept {
+    lua_copy(state_pointer(), from, to);
+  }
+
+  void swap(index_type i, index_type j) noexcept {
+    // this swap implementation uses two copies
+    // we probably can do "better" by using the
+    // rotate function and insert without copy
+    // But Lua may be faster copying builtin types.
+    push_copy_from(i);  // auto tmp = push(stack[i]);
+    copy(j, i);         // stack[i] = stack[j];
+    move_top_to(j);     // stack[j] = tmp;
+  }
+};
+
+struct global_value {
+  const state_pointer_type state;
+  const name_type name;
+};
+
+}  // namespace luxx

@@ -1,7 +1,8 @@
 import luxx = libluxx%lib{luxx}
+import xstd = libxstd%lib{xstd}
 
 for x: cxx{*}
 {
   n = $name($x)
-  ./: exe{$n}: $x $luxx
+  ./: exe{$n}: $x $luxx $xstd
 }

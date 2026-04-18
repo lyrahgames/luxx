@@ -17,6 +17,7 @@
 //
 #include <lua.hpp>
 import std;
+import xstd;
 import luxx;
 
 int main() {
@@ -25,10 +26,25 @@ int main() {
 
   std::string line;
   while (std::getline(std::cin, line)) {
-    int error = state.eval(line);
-    if (error) {
-      std::println("ERROR: {}", state.to_string());
-      state.pop();
+    auto result = state.eval(line);
+    if (result) {
+      std::string str{};
+      for (auto value : result.value())
+        str += visit(value, xstd::match{
+                                [&](auto) {
+                                  return std::format("{}", value.type_name());
+                                },
+                                [&](xstd::one_of<luxx::integer, luxx::number,
+                                                 luxx::string> auto x) {
+                                  return std::format("{}", x);
+                                },
+                            }) +
+               ", ";
+      std::println("{}", str);
+      luxx::stack{state}.pop(result.value().size());
+    } else {
+      std::println("ERROR: {}", result.error().msg);
+      luxx::stack{state}.pop();
     }
   }
 }

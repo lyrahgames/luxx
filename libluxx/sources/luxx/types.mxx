@@ -1,0 +1,98 @@
+// Copyright © 2026 Markus Pawellek
+//
+// This file is part of `luxx`.
+//
+// `luxx` is free software: you can redistribute it and/or modify it
+// under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License,
+// or (at your option) any later version.
+//
+// `luxx` is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
+//
+module;
+#include <lua.hpp>
+
+export module luxx:types;
+import std;
+
+export namespace luxx {
+
+// In the Lua C API, almost every function modifies the Lua state.
+// So, we don't bother with access via `const lua_State*`.
+using state_pointer_type = lua_State*;
+using stack_index_type   = int;
+using size_type          = unsigned int;
+
+using name_type = const char*;
+
+using czstring = const char*;
+
+inline constexpr auto stack_min = LUA_MINSTACK;
+
+struct nil_t {};
+inline constexpr nil_t nil{};
+
+using boolean = bool;
+using number  = lua_Number;
+using integer = lua_Integer;
+using string  = std::string_view;
+
+enum class type_id : int {
+  none          = LUA_TNONE,
+  nil           = LUA_TNIL,
+  number        = LUA_TNUMBER,
+  boolean       = LUA_TBOOLEAN,
+  string        = LUA_TSTRING,
+  table         = LUA_TTABLE,
+  function      = LUA_TFUNCTION,
+  userdata      = LUA_TUSERDATA,
+  thread        = LUA_TTHREAD,
+  lightuserdata = LUA_TLIGHTUSERDATA,
+};
+
+enum class number_subtype { real, integer };
+
+enum class status_code : int {
+  ok            = LUA_OK,
+  runtime_error = LUA_ERRRUN,
+  memory_error  = LUA_ERRMEM,
+  message_error = LUA_ERRERR,
+  syntax_error  = LUA_ERRSYNTAX,
+  yield         = LUA_YIELD,
+  file_error    = LUA_ERRFILE,
+};
+
+struct error {
+  status_code status;
+  string msg;
+};
+
+// status codes:
+// LUA_OK (0): no errors.
+// LUA_ERRRUN: a runtime error.
+// LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
+// LUA_ERRERR: error while running the message handler.
+// LUA_ERRSYNTAX: syntax error during precompilation.
+// LUA_YIELD: the thread (coroutine) yields.
+// LUA_ERRFILE: a file-related error; e.g., it cannot open or read the file.
+
+// enum class stdlib {
+//   base,
+//   coroutine,
+//   table,
+//   io,
+//   os,
+//   string,
+//   utf8,
+//   math,
+//   debug,
+//   package
+// };
+
+}  // namespace luxx

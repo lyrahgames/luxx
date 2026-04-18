@@ -1,6 +1,8 @@
 # Dependencies
 #
-import libs = liblua%lib{lua}
+import libs = \
+  liblua%lib{lua} \
+  libxstd%lib{xstd}
 
 # Sources
 #
