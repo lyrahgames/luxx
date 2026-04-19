@@ -20,6 +20,5 @@ export module luxx;
 export import :version;
 
 export import :types;
-export import :state;
 export import :stack;
-export import :stack_value;
+export import :state;
