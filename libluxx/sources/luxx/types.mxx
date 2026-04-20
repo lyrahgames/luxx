@@ -20,6 +20,7 @@ module;
 
 export module luxx:types;
 import std;
+import xstd;
 
 export namespace luxx {
 
@@ -27,7 +28,9 @@ export namespace luxx {
 // So, we don't bother with access via `const lua_State*`.
 using state_pointer_type = lua_State*;
 using stack_index_type   = int;
+using index_type         = int;
 using size_type          = unsigned int;
+using difference_type    = int;
 
 using name_type = const char*;
 
@@ -35,13 +38,31 @@ using czstring = const char*;
 
 inline constexpr auto stack_min = LUA_MINSTACK;
 
-struct nil_t {};
+inline namespace lua {
+
+struct nil_t {
+  // friend consteval auto operator<=>(nil_t, nil_t) noexcept = default;
+};
 inline constexpr nil_t nil{};
 
 using boolean = bool;
 using number  = lua_Number;
 using integer = lua_Integer;
 using string  = std::string_view;
+
+template <typename type>
+concept builtin = xstd::one_of<nil_t, boolean, number, integer, string>;
+
+}  // namespace lua
+
+inline constexpr auto decay = xstd::match{
+    [](nil_t x) { return x; },
+    [](bool x) { return static_cast<boolean>(x); },
+    [](std::floating_point auto x) { return static_cast<number>(x); },
+    [](std::integral auto x) { return static_cast<integer>(x); },
+    [](string str) { return str; },
+    [](czstring str) { return string{str}; },
+};
 
 enum class type_id : int {
   none          = LUA_TNONE,
@@ -54,6 +75,7 @@ enum class type_id : int {
   userdata      = LUA_TUSERDATA,
   thread        = LUA_TTHREAD,
   lightuserdata = LUA_TLIGHTUSERDATA,
+  integer       = ~LUA_TNUMBER,
 };
 
 enum class number_subtype { real, integer };
@@ -71,6 +93,10 @@ enum class status_code : int {
 struct error {
   status_code status;
   string msg;
+};
+
+struct global {
+  const name_type name;
 };
 
 // status codes:

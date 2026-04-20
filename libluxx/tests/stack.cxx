@@ -4,6 +4,8 @@ import std;
 import xstd;
 import luxx;
 
+using namespace std::literals;
+
 static_assert(std::random_access_iterator<luxx::stack_iterator>);
 static_assert(std::ranges::random_access_range<luxx::stack_range>);
 static_assert(std::ranges::random_access_range<luxx::stack>);
@@ -27,7 +29,6 @@ int main() {
   assert(stack.size() == 0);
 
   stack.push(luxx::nil);
-  stack.push();
   stack.push(-123, 3.14, 1.0);
   stack.push("a string");
   stack.push(true, false);
@@ -48,12 +49,52 @@ int main() {
   assert(stack[7] == false);
   assert(stack[8] == "Dynamic String");
 
+  assert(stack[2] != -123.);
+  assert(stack[4] != 1);
+  assert(stack[4] == 1.);
+  assert(!(stack[1] < 1) && !(stack[1] == 1) && !(stack[1] > 1));
+  assert(stack[2] < -100);
+  assert(stack[2] > -125);
+  assert(3.0 < stack[3]);
+  assert(1.0 >= stack[4]);
+  assert(stack[5] != "b string");
+  assert(stack[8] != "dynamic string");
+  assert("a czstring"sv <= "a string");
+  assert("a czstring" <= stack[5]);
+  assert(stack[5] <= "a zstring");
+
+  assert(not safe_cast<luxx::boolean>(stack[1]));
+  assert(not safe_cast<luxx::integer>(stack[1]));
+  assert(not safe_cast<luxx::number>(stack[1]));
+  assert(not safe_cast<luxx::string>(stack[1]));
+
+  assert(not safe_cast<luxx::boolean>(stack[2]));
+  assert(safe_cast<luxx::integer>(stack[2]).value() == -123);
+  assert(not safe_cast<luxx::number>(stack[2]));
+  assert(not safe_cast<luxx::string>(stack[2]));
+
+  assert(not safe_cast<luxx::boolean>(stack[3]));
+  assert(not safe_cast<luxx::integer>(stack[3]));
+  assert(safe_cast<luxx::number>(stack[3]).value() == 3.14);
+  assert(safe_cast<float>(stack[3]).value() == 3.14f);
+  assert(not safe_cast<luxx::string>(stack[3]));
+
+  assert(not safe_cast<luxx::boolean>(stack[5]));
+  assert(not safe_cast<luxx::integer>(stack[5]));
+  assert(not safe_cast<luxx::number>(stack[5]));
+  assert(safe_cast<luxx::string>(stack[5]).value() == "a string");
+
+  assert(safe_cast<luxx::boolean>(stack[6]).value() == true);
+  assert(not safe_cast<luxx::integer>(stack[6]));
+  assert(not safe_cast<luxx::number>(stack[6]));
+  assert(not safe_cast<luxx::string>(stack[6]));
+
   stack.rotate(6, -1);
   stack[1] = "another string";
   stack[2] = 456;
   stack[4] = stack[3];
   stack[5] = "123456789";
-  stack[6] = static_cast<luxx::integer>(stack[5]);
+  stack[6] = lua_cast<luxx::integer>(stack[5]).value();
   stack.push(stack[2]);
 
   print(stack);

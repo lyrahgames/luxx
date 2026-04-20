@@ -24,7 +24,7 @@ int main() {
       assert(static_cast<luxx::integer>(values[0]) == 54);
       assert(values[0] == 54);
       assert(values[0] != "test");
-      assert(values[0] == "54");
+      assert(values[0] != "54");
       assert(static_cast<luxx::string>(values[1]) == "test");
       assert(values[1] == "test");
       assert(values[1] != 54);
