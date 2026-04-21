@@ -6,11 +6,36 @@ import luxx;
 
 using namespace std::literals;
 
-static_assert(std::random_access_iterator<luxx::stack_iterator>);
-static_assert(std::ranges::random_access_range<luxx::stack_range>);
-static_assert(std::ranges::random_access_range<luxx::stack>);
+// assignable_from
+// convertible_to
+// constructible_from
 
-void print(luxx::stack stack) {
+static_assert(not std::default_initializable<luxx::stack_view>);
+static_assert(std::destructible<luxx::stack_view>);
+static_assert(not std::movable<luxx::stack_view>);
+static_assert(not std::copyable<luxx::stack_view>);
+static_assert(std::equality_comparable<luxx::stack_view>);
+static_assert(std::ranges::random_access_range<luxx::stack_view>);
+
+static_assert(std::random_access_iterator<luxx::stack_iterator>);
+
+static_assert(not std::default_initializable<luxx::stack_reference>);
+static_assert(std::destructible<luxx::stack_reference>);
+static_assert(std::move_constructible<luxx::stack_reference>);
+static_assert(std::copy_constructible<luxx::stack_reference>);
+static_assert(std::movable<luxx::stack_reference>);
+static_assert(std::copyable<luxx::stack_reference>);
+
+static_assert(std::ranges::random_access_range<luxx::stack_range>);
+
+static_assert(std::ranges::random_access_range<luxx::stack_array<1>>);
+static_assert(std::ranges::random_access_range<luxx::stack_array<2>>);
+static_assert(std::ranges::random_access_range<luxx::stack_array<3>>);
+static_assert(xstd::tuple_like<luxx::stack_array<1>>);
+static_assert(xstd::tuple_like<luxx::stack_array<2>>);
+static_assert(xstd::tuple_like<luxx::stack_array<3>>);
+
+void print(luxx::stack_view stack) {
   std::println("╭─────┬───────");
   for (auto value : stack | std::views::reverse)
     std::println("│ {:>3} │ {}", value.stack_index(), value);
@@ -21,7 +46,7 @@ void print(luxx::stack stack) {
 
 int main() {
   luxx::state lua{};
-  luxx::stack stack{lua};
+  luxx::stack_view stack{lua};
   stack.reserve(10);
 
   print(stack);

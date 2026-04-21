@@ -42,10 +42,15 @@ export struct global_value {
   constexpr auto key() const noexcept -> name_type { return name; }
 };
 
-export struct stack_value;
-export struct stack_iterator;
-export struct stack;
-export struct stack_range;
+export {
+  struct stack_view;
+  struct stack_iterator;
+  struct stack_reference;
+
+  struct stack_range;
+  template <size_type>
+  struct stack_array;
+}
 
 struct common_stack_interface {
   auto size(this auto const& self) noexcept -> size_type {
@@ -264,7 +269,7 @@ struct common_stack_interface {
     self.push(string{str});
   }
 
-  // void push(this auto const& self, stack_value value) noexcept;
+  // void push(this auto const& self, stack_reference value) noexcept;
   // void push(this auto const& self, global_value value) noexcept;
 
   void push(this auto const& self, auto... value) noexcept
@@ -320,43 +325,55 @@ struct common_stack_interface {
   }
 };
 
-struct stack : common_stack_interface {
-  using value_type      = stack_value;
+struct stack_view : common_stack_interface {
+  using value_type      = stack_reference;
   using size_type       = size_type;
   using difference_type = int;
-  using reference       = stack_value;
+  using reference       = stack_reference;
   using iterator        = stack_iterator;
 
   const state_pointer_type state;
 
-  constexpr stack(state_pointer_type ptr) noexcept : state{ptr} {}
+  constexpr stack_view(state_pointer_type ptr) noexcept : state{ptr} {}
 
   constexpr auto state_pointer() const noexcept -> state_pointer_type {
     return state;
   }
 
-  constexpr auto operator[](index_type index) const noexcept -> stack_value;
+  constexpr auto operator[](index_type index) const noexcept -> stack_reference;
 
   constexpr auto begin() const noexcept -> iterator;
 
-  constexpr auto end() const noexcept -> iterator;
+  constexpr auto end() const noexcept;
 
-  auto top() const noexcept -> stack_value;
+  auto top() const noexcept -> stack_reference;
 
   using common_stack_interface::push;
 
-  void push(stack_value value) noexcept;
+  void push(stack_reference value) noexcept;
 
   void push(global_value value) noexcept;
+
+  friend constexpr bool operator==(stack_view x, stack_view y) noexcept {
+    return x.state_pointer() == y.state_pointer();
+  }
 };
 
-struct stack_iterator {
+struct stack_iterator : private stack_view {
+  using stack_type        = stack_view;
   using iterator_concept  = std::random_access_iterator_tag;
   using iterator_category = std::random_access_iterator_tag;
-  using value_type        = stack_value;
+  using value_type        = stack_reference;
   using difference_type   = index_type;
   using pointer           = stack_iterator;
-  using reference         = stack_value;
+  using reference         = stack_reference;
+
+  index_type index{};
+
+  constexpr stack_iterator() noexcept : stack_type{nullptr}, index{} {}
+
+  constexpr stack_iterator(stack_type s, index_type i) noexcept
+      : stack_type{s}, index{i} {}
 
   constexpr auto operator=(stack_iterator other) noexcept -> stack_iterator& {
     assert(state_pointer() == other.state_pointer());
@@ -364,9 +381,13 @@ struct stack_iterator {
     return *this;
   }
 
-  constexpr auto state_pointer() const noexcept -> state_pointer_type {
-    return state;
-  }
+  using stack_type::state_pointer;
+
+  constexpr auto stack() const noexcept -> stack_type { return *this; }
+
+  // constexpr auto state_pointer() const noexcept -> state_pointer_type {
+  //   return state;
+  // }
   constexpr auto stack_index() const noexcept -> index_type { return index; }
   constexpr auto stack_index() noexcept -> index_type& { return index; }
 
@@ -424,108 +445,72 @@ struct stack_iterator {
   }
 
   friend constexpr auto operator-(stack_iterator x, stack_iterator y) noexcept {
-    assert(x.state_pointer() == y.state_pointer());
+    assert(x.stack() == y.stack());
     return x.stack_index() - y.stack_index();
   }
 
   friend constexpr bool operator==(stack_iterator x,
                                    stack_iterator y) noexcept {
-    assert(x.state_pointer() == y.state_pointer());
+    assert(x.stack() == y.stack());
     return x.stack_index() == y.stack_index();
   }
 
   friend constexpr auto operator<=>(stack_iterator x, stack_iterator y) noexcept
       -> std::strong_ordering {
-    assert(x.state_pointer() == y.state_pointer());
+    assert(x.stack() == y.stack());
     return x.stack_index() <=> y.stack_index();
   }
 
-  const state_pointer_type state{};
-  index_type index{};
+  struct sentinel {};
+  static consteval auto end() noexcept { return sentinel{}; }
+  friend constexpr bool operator==(stack_iterator it, sentinel) noexcept {
+    return not it.stack().valid(it.stack_index());
+  }
 };
 
-struct stack_value : private stack {
-  // friend common_stack_interface;
-  // friend stack;
-  using stack::state_pointer;
+struct stack_reference : private stack_view {
+  using stack_type = stack_view;
 
- private:
-  // using common_stack_interface::type;
-  // using stack::type;
+  using stack_type::state_pointer;
 
- public:
-  // using stack              = common_stack_interface;
-  // using state_pointer_type = lua_State*;
-  // using stack_index_type   = int;
-
-  // const state_pointer_type state;
   const stack_index_type index;
 
-  constexpr void check() noexcept {
-    assert(state);
-    assert((1 <= index) && (index <= stack::size()));
-  }
-
-  constexpr stack_value(stack s, std::unsigned_integral auto i) noexcept
-      : stack{s}, index{static_cast<stack_index_type>(i)} {}
-
-  stack_value(stack s) noexcept : stack_value{s, s.size()} {}
-
-  stack_value(stack s, stack_index_type i) noexcept
-      : stack_value{s, (i < 0) ? (stack::size() + i + 1) : i} {}
-
-  // constexpr stack_value(state_pointer_type ptr,
-  //                       std::unsigned_integral auto idx) noexcept
-  //     : state{ptr}, index{static_cast<stack_index_type>(idx)} {
-  //   check();
+  // constexpr void check() noexcept {
+  //   assert((1 <= index) && (index <= stack::size()));
   // }
 
-  // stack_value(state_pointer_type ptr) noexcept
-  //     : state{ptr}, index{stack::size()} {}
+  constexpr stack_reference(stack_type s,
+                            std::unsigned_integral auto i) noexcept
+      : stack_type{s}, index{static_cast<stack_index_type>(i)} {}
 
-  // stack_value(state_pointer_type ptr, stack_index_type idx) noexcept
-  //     : state{ptr}, index{(idx < 0) ? (stack::size() + idx + 1) : idx} {
-  //   check();
-  // }
+  stack_reference(stack_type s) noexcept : stack_reference{s, s.size()} {}
 
-  constexpr auto this_stack() const noexcept -> stack { return *this; }
+  stack_reference(stack_type s, stack_index_type i) noexcept
+      : stack_reference{s, (i < 0) ? (stack_type::size() + i + 1) : i} {}
 
-  auto operator=(stack_value value) noexcept -> stack_value& {
-    assert(state_pointer() == value.state_pointer());
-    // lua_copy(state_pointer(), value.stack_index(), stack_index());
-    this_stack().copy(value.stack_index(), stack_index());
+  constexpr auto stack() const noexcept -> stack_type { return *this; }
+
+  auto operator=(stack_reference value) noexcept -> stack_reference& {
+    assert(stack() == value.stack());
+    stack().copy(value.stack_index(), stack_index());
     return *this;
   }
 
-  auto operator=(auto value) noexcept -> stack_value& {
-    // stack{state_pointer()}.push(value);
-    // lua_replace(state_pointer(), stack_index());
-    this_stack().push(value);
-    this_stack().move_top_to(stack_index());
+  auto operator=(auto value) noexcept -> stack_reference& {
+    stack().push(value);
+    stack().move_top_to(stack_index());
     return *this;
   }
 
   constexpr auto operator&() const noexcept -> stack_iterator {
-    return stack_iterator{state_pointer(), stack_index()};
+    return stack_iterator{stack(), stack_index()};
   }
-
-  // auto operator=(stack_value value) noexcept -> stack_value&;
-
-  // auto operator=(auto value) noexcept -> stack_value&;
-
-  // constexpr auto operator&() const noexcept -> stack_iterator;
-
-  // constexpr auto state_pointer() const noexcept -> state_pointer_type {
-  //   return state;
-  // }
 
   constexpr auto stack_index() const noexcept -> stack_index_type {
     return index;
   }
 
-  auto type() const noexcept -> type_id {
-    return this_stack().type(stack_index());
-  }
+  auto type() const noexcept -> type_id { return stack().type(stack_index()); }
 
   auto type_name(type_id tid) const noexcept {
     return lua_typename(state_pointer(), static_cast<int>(tid));
@@ -535,7 +520,7 @@ struct stack_value : private stack {
 
   template <typename type>
   explicit operator type() const {
-    return stack::raw_cast<type>(stack_index());
+    return stack().raw_cast<type>(stack_index());
   }
 
   auto visit(type_id tid, auto&& f) const {
@@ -563,12 +548,12 @@ struct stack_value : private stack {
     return visit(type(), std::forward<decltype(f)>(f));
   }
 
-  friend inline bool operator==(stack_value x, auto y) noexcept {
-    return x.this_stack().safe_equal(x.stack_index(), y);
+  friend inline bool operator==(stack_reference x, auto y) noexcept {
+    return x.stack().safe_equal(x.stack_index(), y);
   }
 
-  friend inline auto operator<=>(stack_value x, auto y) noexcept {
-    return x.this_stack().safe_compare(x.stack_index(), y);
+  friend inline auto operator<=>(stack_reference x, auto y) noexcept {
+    return x.stack().safe_compare(x.stack_index(), y);
   }
 };
 
@@ -594,7 +579,8 @@ struct stack_range {
 
   constexpr bool empty() const noexcept { return (size() == 0); }
 
-  constexpr auto operator[](index_type index) const noexcept -> stack_value {
+  constexpr auto operator[](index_type index) const noexcept
+      -> stack_reference {
     return *(_it + index);
   }
 
@@ -603,54 +589,80 @@ struct stack_range {
   constexpr auto end() const noexcept -> stack_iterator { return _it + size(); }
 };
 
-constexpr auto stack::operator[](index_type index) const noexcept
-    -> stack_value {
-  return {state_pointer(), index};
+template <size_type N>
+struct stack_array {
+  const stack_iterator _it;
+
+  constexpr stack_array(stack_iterator it) noexcept : _it{it} {}
+
+  static consteval auto size() noexcept -> size_type { return N; }
+
+  static consteval bool empty() noexcept { return (size() == 0); }
+
+  constexpr auto operator[](index_type index) const noexcept
+      -> stack_reference {
+    return *(_it + index);
+  }
+
+  constexpr auto begin() const noexcept -> stack_iterator { return _it; }
+
+  constexpr auto end() const noexcept -> stack_iterator { return _it + size(); }
+
+  template <std::size_t index>
+  constexpr auto get() const noexcept -> stack_reference {
+    return *(_it + index);
+  }
+};
+
+constexpr auto stack_view::operator[](index_type index) const noexcept
+    -> stack_reference {
+  return {*this, index};
 }
 
-constexpr auto stack::begin() const noexcept -> iterator {
+constexpr auto stack_view::begin() const noexcept -> iterator {
   return iterator{state_pointer(), 1};
 }
 
-constexpr auto stack::end() const noexcept -> iterator {
+constexpr auto stack_view::end() const noexcept {
   return iterator{state_pointer(), 1 + static_cast<index_type>(size())};
+  // return iterator::end();
 }
 
-inline auto stack::top() const noexcept -> stack_value {
+inline auto stack_view::top() const noexcept -> stack_reference {
   return operator[](-1);
 }
 
-void stack::push(stack_value value) noexcept {
+void stack_view::push(stack_reference value) noexcept {
   assert(value.state_pointer() == state_pointer());
   push_copy_from(value.stack_index());
 }
 
-void stack::push(global_value value) noexcept {
+void stack_view::push(global_value value) noexcept {
   assert(value.state_pointer() == state_pointer());
   lua_getglobal(state_pointer(), value.key());
 }
 
 export template <typename type>
-inline auto lua_cast(stack_value value) noexcept -> std::optional<type> {
-  return stack{value.state_pointer()}.try_cast<type>(value.stack_index());
+inline auto lua_cast(stack_reference value) noexcept -> std::optional<type> {
+  return value.stack().try_cast<type>(value.stack_index());
 }
 
 export template <typename type>
-inline auto safe_cast(stack_value value) noexcept -> std::optional<type> {
-  return stack{value.state_pointer()}.safe_cast<type>(value.stack_index());
+inline auto safe_cast(stack_reference value) noexcept -> std::optional<type> {
+  return value.stack().safe_cast<type>(value.stack_index());
 }
 
 constexpr auto stack_iterator::operator*() const noexcept -> reference {
-  return {state_pointer(), stack_index()};
+  return {stack(), stack_index()};
 }
 
 constexpr auto stack_iterator::operator[](difference_type n) const noexcept
     -> reference {
-  return {state_pointer(), stack_index() + n};
+  return {stack(), stack_index() + n};
 }
 
 inline auto global_value::operator=(auto value) noexcept -> global_value& {
-  stack{state_pointer()}.push(value);
+  stack_view{state_pointer()}.push(value);
   lua_setglobal(state_pointer(), key());
   return *this;
 }
@@ -658,15 +670,16 @@ inline auto global_value::operator=(auto value) noexcept -> global_value& {
 export inline auto visit(global_value value, auto&& f) {
   const auto tid =
       static_cast<type_id>(lua_getglobal(value.state_pointer(), value.key()));
-  visit(tid, stack{value.state_pointer()}.top(), std::forward<decltype(f)>(f));
+  visit(tid, stack_view{value.state_pointer()}.top(),
+        std::forward<decltype(f)>(f));
 }
 
 }  // namespace luxx
 
 template <>
-struct std::formatter<luxx::stack_value> {
+struct std::formatter<luxx::stack_reference> {
   constexpr auto parse(auto& ctx) { return ctx.begin(); }
-  auto format(luxx::stack_value value, auto& ctx) const {
+  auto format(luxx::stack_reference value, auto& ctx) const {
     return value.visit(xstd::match{
         [&](auto) {
           return std::format_to(ctx.out(), "[{}]", value.type_name());
@@ -682,13 +695,22 @@ struct std::formatter<luxx::stack_value> {
 };
 
 template <>
-struct std::formatter<luxx::global_value> : std::formatter<luxx::stack_value> {
-  using base = std::formatter<luxx::stack_value>;
+struct std::formatter<luxx::global_value>
+    : std::formatter<luxx::stack_reference> {
+  using base = std::formatter<luxx::stack_reference>;
   auto format(luxx::global_value value, auto& ctx) const {
-    luxx::stack stack{value.state_pointer()};
+    luxx::stack_view stack{value.state_pointer()};
     stack.push(value);
     auto result = base::format(stack.top(), ctx);
     stack.pop();
     return result;
   }
+};
+
+template <luxx::size_type size>
+struct std::tuple_size<luxx::stack_array<size>>
+    : std::integral_constant<std::size_t, size> {};
+template <luxx::size_type size, std::size_t index>
+struct std::tuple_element<index, luxx::stack_array<size>> {
+  using type = luxx::stack_reference;
 };

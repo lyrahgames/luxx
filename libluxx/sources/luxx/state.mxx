@@ -78,7 +78,7 @@ struct state_base {
 
   [[nodiscard]] auto eval(this auto const& self, std::string_view str) noexcept
       -> std::expected<stack_range, error> {
-    struct stack stack{self.native_handle()};
+    stack_view stack{self.native_handle()};
     const auto first  = stack.end();
     const auto status = static_cast<status_code>(
         self.load(str) || self.protected_call(0, LUA_MULTRET));

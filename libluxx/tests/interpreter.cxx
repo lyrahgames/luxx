@@ -29,19 +29,11 @@ int main() {
     auto result = state.eval(line);
     if (result) {
       std::string str{};
-      for (auto value : result.value())
-        str +=
-            value.visit(xstd::match{
-                [&](auto) { return std::format("{}", value.type_name()); },
-                [&](xstd::one_of<luxx::integer, luxx::number, luxx::string> auto
-                        x) { return std::format("{}", x); },
-            }) +
-            ", ";
-      std::println("{}", str);
-      luxx::stack{state}.pop(result.value().size());
+      std::println("{}", result.value());  // output range directly
+      luxx::stack_view{state}.pop(result.value().size());
     } else {
       std::println("ERROR: {}", result.error().msg);
-      luxx::stack{state}.pop();
+      luxx::stack_view{state}.pop();
     }
   }
 }
