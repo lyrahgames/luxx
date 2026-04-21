@@ -96,14 +96,15 @@ struct error {
 };
 
 struct global {
-  const name_type name;
+  const name_type key;
+  constexpr auto name() const noexcept -> name_type { return key; }
 };
 
 // status codes:
 // LUA_OK (0): no errors.
 // LUA_ERRRUN: a runtime error.
-// LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
-// LUA_ERRERR: error while running the message handler.
+// LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the
+// message handler. LUA_ERRERR: error while running the message handler.
 // LUA_ERRSYNTAX: syntax error during precompilation.
 // LUA_YIELD: the thread (coroutine) yields.
 // LUA_ERRFILE: a file-related error; e.g., it cannot open or read the file.

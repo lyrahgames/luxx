@@ -10,6 +10,8 @@ using namespace std::literals;
 // convertible_to
 // constructible_from
 
+static_assert(sizeof(luxx::stack_view) == sizeof(void*));
+static_assert(alignof(luxx::stack_view) == alignof(void*));
 static_assert(not std::default_initializable<luxx::stack_view>);
 static_assert(std::destructible<luxx::stack_view>);
 static_assert(not std::movable<luxx::stack_view>);
@@ -61,10 +63,11 @@ int main() {
     std::string str{"Dynamic String"};
     stack.push(str);
   }
+  stack.pop(luxx::global{"global_str"});
 
   print(stack);
   assert(not stack.empty());
-  assert(stack.size() == 8);
+  assert(stack.size() == 7);
   assert(stack[1] == luxx::nil);
   assert(stack[2] == -123);
   assert(stack[3] == 3.14);
@@ -72,7 +75,20 @@ int main() {
   assert(stack[5] == "a string");
   assert(stack[6] == true);
   assert(stack[7] == false);
+
+  stack.push(luxx::global{"global_str"});
+
+  assert(stack.size() == 8);
   assert(stack[8] == "Dynamic String");
+
+  stack.pop();
+  auto var = lua["global_str"] = "global string";
+  stack.push(var);
+
+  // std::println("lua['global_str'] = {}", var);
+
+  assert(stack.size() == 8);
+  assert(stack[8] == "global string");
 
   assert(stack[2] != -123.);
   assert(stack[4] != 1);
@@ -131,7 +147,7 @@ int main() {
   assert(stack[4] == 3.14);
   assert(stack[5] == "123456789");
   assert(stack[6] == 123456789);
-  assert(stack[7] == "Dynamic String");
+  assert(stack[7] == "global string");
   assert(stack[8] == true);
   assert(stack[9] == 456);
 }

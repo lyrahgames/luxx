@@ -26,26 +26,11 @@ import :types;
 
 namespace luxx {
 
-export struct global_value {
-  const state_pointer_type state;
-  const name_type name;
-
-  constexpr global_value(state_pointer_type p, name_type k) noexcept
-      : state{p}, name{k} {}
-
-  auto operator=(auto value) noexcept -> global_value&;
-
-  constexpr auto state_pointer() const noexcept -> state_pointer_type {
-    return state;
-  }
-
-  constexpr auto key() const noexcept -> name_type { return name; }
-};
-
 export {
   struct stack_view;
   struct stack_iterator;
   struct stack_reference;
+  struct global_reference;
 
   struct stack_range;
   template <size_type>
@@ -269,8 +254,15 @@ struct common_stack_interface {
     self.push(string{str});
   }
 
+  void push(this auto const& self, global var) noexcept {
+    // function returns typeid of Lua value as int
+    // need to think about better API to handle this
+    // for now, ignore it
+    lua_getglobal(self.state_pointer(), var.name());
+  }
+
   // void push(this auto const& self, stack_reference value) noexcept;
-  // void push(this auto const& self, global_value value) noexcept;
+  // void push(this auto const& self, global_reference value) noexcept;
 
   void push(this auto const& self, auto... value) noexcept
     requires(sizeof...(value) > 1)
@@ -290,6 +282,31 @@ struct common_stack_interface {
 
   void pop(this auto const& self, size_type n = 1) noexcept {
     lua_pop(self.state_pointer(), static_cast<int>(n));
+  }
+
+  void pop(this auto const& self, global var) noexcept {
+    lua_setglobal(self.state_pointer(), var.name());
+  }
+
+  template <typename type>
+  auto pop(this auto const& self) noexcept {
+    auto result = self.template raw_cast<type>(-1);
+    self.pop();
+    return result;
+  }
+
+  template <typename type>
+  auto try_pop(this auto const& self) noexcept {
+    auto result = self.template try_cast<type>(-1);
+    if (result) self.pop();
+    return result;
+  }
+
+  template <typename type>
+  auto safe_pop(this auto const& self) noexcept {
+    auto result = self.template safe_cast<type>(-1);
+    if (result) self.pop();
+    return result;
   }
 
   void remove(this auto const& self, index_type index) noexcept {
@@ -350,9 +367,11 @@ struct stack_view : common_stack_interface {
 
   using common_stack_interface::push;
 
-  void push(stack_reference value) noexcept;
+  void push(stack_reference value) const noexcept;
 
-  void push(global_value value) noexcept;
+  void push(global_reference value) const noexcept;
+
+  auto ref_push(auto value) const noexcept -> stack_reference;
 
   friend constexpr bool operator==(stack_view x, stack_view y) noexcept {
     return x.state_pointer() == y.state_pointer();
@@ -614,6 +633,29 @@ struct stack_array {
   }
 };
 
+struct global_reference : private stack_view, global {
+  using stack_type = stack_view;
+
+  constexpr global_reference(stack_view s, name_type name) noexcept
+      : stack_type{s}, global{name} {}
+
+  constexpr global_reference(stack_view s, global var) noexcept
+      : stack_type{s}, global{var} {}
+
+  constexpr auto stack() const noexcept -> stack_type { return *this; }
+
+  auto operator=(auto value) noexcept -> global_reference& {
+    stack().push(value);
+    stack().pop(static_cast<global>(*this));
+    return *this;
+  }
+
+  auto visit(auto&& f) {
+    stack().push(static_cast<global>(*this));
+    stack().top().visit(std::forward<decltype(f)>(f));
+  }
+};
+
 constexpr auto stack_view::operator[](index_type index) const noexcept
     -> stack_reference {
   return {*this, index};
@@ -632,14 +674,19 @@ inline auto stack_view::top() const noexcept -> stack_reference {
   return operator[](-1);
 }
 
-void stack_view::push(stack_reference value) noexcept {
+inline void stack_view::push(stack_reference value) const noexcept {
   assert(value.state_pointer() == state_pointer());
   push_copy_from(value.stack_index());
 }
 
-void stack_view::push(global_value value) noexcept {
-  assert(value.state_pointer() == state_pointer());
-  lua_getglobal(state_pointer(), value.key());
+inline void stack_view::push(global_reference value) const noexcept {
+  assert(value.stack() == *this);
+  value.stack().push(static_cast<global>(value));
+}
+
+inline auto stack_view::ref_push(auto value) const noexcept -> stack_reference {
+  push(value);
+  return top();
 }
 
 export template <typename type>
@@ -659,19 +706,6 @@ constexpr auto stack_iterator::operator*() const noexcept -> reference {
 constexpr auto stack_iterator::operator[](difference_type n) const noexcept
     -> reference {
   return {stack(), stack_index() + n};
-}
-
-inline auto global_value::operator=(auto value) noexcept -> global_value& {
-  stack_view{state_pointer()}.push(value);
-  lua_setglobal(state_pointer(), key());
-  return *this;
-}
-
-export inline auto visit(global_value value, auto&& f) {
-  const auto tid =
-      static_cast<type_id>(lua_getglobal(value.state_pointer(), value.key()));
-  visit(tid, stack_view{value.state_pointer()}.top(),
-        std::forward<decltype(f)>(f));
 }
 
 }  // namespace luxx
@@ -695,14 +729,13 @@ struct std::formatter<luxx::stack_reference> {
 };
 
 template <>
-struct std::formatter<luxx::global_value>
+struct std::formatter<luxx::global_reference>
     : std::formatter<luxx::stack_reference> {
   using base = std::formatter<luxx::stack_reference>;
-  auto format(luxx::global_value value, auto& ctx) const {
-    luxx::stack_view stack{value.state_pointer()};
-    stack.push(value);
-    auto result = base::format(stack.top(), ctx);
-    stack.pop();
+  auto format(luxx::global_reference ref, auto& ctx) const {
+    ref.stack().push(ref);
+    auto result = base::format(ref.stack().top(), ctx);
+    ref.stack().pop();
     return result;
   }
 };

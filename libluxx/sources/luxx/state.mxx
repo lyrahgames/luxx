@@ -91,6 +91,15 @@ struct state_base {
                  std::filesystem::path const& path) noexcept {
     return self.load_file(path) || self.protected_call(0, LUA_MULTRET);
   }
+
+  auto operator[](this auto const& self, global var) noexcept
+      -> global_reference {
+    return global_reference{stack_view{self.native_handle()}, var};
+  }
+
+  auto operator[](this auto const& self, name_type name) noexcept {
+    return self[global{name}];
+  }
 };
 
 template <typename type>

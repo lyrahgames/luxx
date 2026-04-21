@@ -28,7 +28,6 @@ int main() {
   while (std::getline(std::cin, line)) {
     auto result = state.eval(line);
     if (result) {
-      std::string str{};
       std::println("{}", result.value());  // output range directly
       luxx::stack_view{state}.pop(result.value().size());
     } else {
