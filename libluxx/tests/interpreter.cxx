@@ -15,9 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
 //
-#include <lua.hpp>
 import std;
-import xstd;
 import luxx;
 
 int main() {

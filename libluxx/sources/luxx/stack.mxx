@@ -40,7 +40,7 @@ export {
 struct common_stack_interface {
   auto size(this auto const& self) noexcept -> size_type {
     // Will never return a negative number.
-    return static_cast<size_type>(lua_gettop(self.state_pointer()));
+    return static_cast<size_type>(lua_gettop(self.raw_state()));
   }
 
   bool empty(this auto const& self) noexcept { return (self.size() == 0); }
@@ -51,7 +51,7 @@ struct common_stack_interface {
   bool try_reserve(this auto const& self, size_type extra) noexcept {
     // Ensures that the stack has space for at least n extra elements,
     // that is, that you can safely push up to n additional values into it.
-    return lua_checkstack(self.state_pointer(), static_cast<int>(extra));
+    return lua_checkstack(self.raw_state(), static_cast<int>(extra));
   }
 
   // maybe other name: reserve_extra
@@ -69,15 +69,15 @@ struct common_stack_interface {
   void resize(this auto const& self, index_type index) noexcept {
     // This function can run arbitrary code when removing
     // an index marked as to-be-closed from the stack.
-    lua_settop(self.state_pointer(), index);
+    lua_settop(self.raw_state(), index);
   }
 
   bool valid(this auto const& self, index_type i) noexcept {
-    return (lua_isnone(self.state_pointer(), i) == 0);
+    return (lua_isnone(self.raw_state(), i) == 0);
   }
 
   auto raw_type(this auto const& self, index_type index) noexcept -> type_id {
-    return static_cast<type_id>(lua_type(self.state_pointer(), index));
+    return static_cast<type_id>(lua_type(self.raw_state(), index));
   }
 
   auto type(this auto const& self, index_type index) noexcept -> type_id {
@@ -87,23 +87,23 @@ struct common_stack_interface {
 
   template <std::same_as<boolean>>
   auto raw_cast(this auto const& self, index_type index) noexcept -> boolean {
-    return lua_toboolean(self.state_pointer(), index);
+    return lua_toboolean(self.raw_state(), index);
   }
 
   template <std::same_as<integer>>
   auto raw_cast(this auto const& self, index_type index) noexcept -> integer {
-    return lua_tointeger(self.state_pointer(), index);
+    return lua_tointeger(self.raw_state(), index);
   }
 
   template <std::same_as<number>>
   auto raw_cast(this auto const& self, index_type index) noexcept -> number {
-    return lua_tonumber(self.state_pointer(), index);
+    return lua_tonumber(self.raw_state(), index);
   }
 
   template <std::same_as<string>>
   auto raw_cast(this auto const& self, index_type index) noexcept -> string {
     std::size_t size{};
-    const auto data = lua_tolstring(self.state_pointer(), index, &size);
+    const auto data = lua_tolstring(self.raw_state(), index, &size);
     return string{data, size};
   }
 
@@ -119,7 +119,7 @@ struct common_stack_interface {
   auto try_cast(this auto const& self, index_type index) noexcept
       -> std::optional<integer> {
     int valid;
-    const auto result = lua_tointegerx(self.state_pointer(), index, &valid);
+    const auto result = lua_tointegerx(self.raw_state(), index, &valid);
     if (not valid) return {};
     return static_cast<integer>(result);
   }
@@ -128,7 +128,7 @@ struct common_stack_interface {
   auto try_cast(this auto const& self, index_type index) noexcept
       -> std::optional<number> {
     int valid;
-    const auto result = lua_tonumberx(self.state_pointer(), index, &valid);
+    const auto result = lua_tonumberx(self.raw_state(), index, &valid);
     if (not valid) return {};
     return static_cast<number>(result);
   }
@@ -137,7 +137,7 @@ struct common_stack_interface {
   auto try_cast(this auto const& self, index_type index) noexcept
       -> std::optional<string> {
     std::size_t size{};
-    const auto data = lua_tolstring(self.state_pointer(), index, &size);
+    const auto data = lua_tolstring(self.raw_state(), index, &size);
     if (not data) return {};
     return string{data, size};
   }
@@ -154,17 +154,17 @@ struct common_stack_interface {
 
   template <std::same_as<nil_t>>
   bool holds(this auto const& self, index_type index) noexcept {
-    return (lua_isnil(self.state_pointer(), index) == 1);
+    return (lua_isnil(self.raw_state(), index) == 1);
   }
 
   template <std::same_as<boolean>>
   bool holds(this auto const& self, index_type index) noexcept {
-    return (lua_isboolean(self.state_pointer(), index) == 1);
+    return (lua_isboolean(self.raw_state(), index) == 1);
   }
 
   template <std::same_as<integer>>
   bool holds(this auto const& self, index_type index) noexcept {
-    return (lua_isinteger(self.state_pointer(), index) == 1);
+    return (lua_isinteger(self.raw_state(), index) == 1);
   }
 
   template <std::same_as<number>>
@@ -219,26 +219,26 @@ struct common_stack_interface {
   }
 
   void push(this auto const& self, nil_t) noexcept {
-    lua_pushnil(self.state_pointer());
+    lua_pushnil(self.raw_state());
   }
 
   void push(this auto const& self, boolean value) noexcept {
-    lua_pushboolean(self.state_pointer(), static_cast<int>(value));
+    lua_pushboolean(self.raw_state(), static_cast<int>(value));
   }
 
   void push(this auto const& self, number value) noexcept {
-    lua_pushnumber(self.state_pointer(), value);
+    lua_pushnumber(self.raw_state(), value);
   }
 
   void push(this auto const& self, integer value) noexcept {
-    lua_pushinteger(self.state_pointer(), value);
+    lua_pushinteger(self.raw_state(), value);
   }
 
   void push(this auto const& self, std::string_view str) noexcept {
     // Lua will make or reuse an internal copy of the given string. So, the
     // memory can be freed or reused immediately after the function returns.
     // Returns a pointer to the internal copy of the string
-    lua_pushlstring(self.state_pointer(), str.data(), str.size());
+    lua_pushlstring(self.raw_state(), str.data(), str.size());
   }
 
   void push(this auto const& self, std::integral auto value) noexcept {
@@ -250,7 +250,7 @@ struct common_stack_interface {
   }
 
   void push(this auto const& self, czstring str) noexcept {
-    // lua_pushstring(self.state_pointer(), str);
+    // lua_pushstring(self.raw_state(), str);
     self.push(string{str});
   }
 
@@ -258,7 +258,7 @@ struct common_stack_interface {
     // function returns typeid of Lua value as int
     // need to think about better API to handle this
     // for now, ignore it
-    lua_getglobal(self.state_pointer(), var.name());
+    lua_getglobal(self.raw_state(), var.name());
   }
 
   // void push(this auto const& self, stack_reference value) noexcept;
@@ -272,20 +272,20 @@ struct common_stack_interface {
 
   // better name?
   void push_copy_from(this auto const& self, index_type index) noexcept {
-    lua_pushvalue(self.state_pointer(), index);
+    lua_pushvalue(self.raw_state(), index);
   }
 
   // better name?
   void move_top_to(this auto const& self, index_type index) noexcept {
-    lua_replace(self.state_pointer(), index);
+    lua_replace(self.raw_state(), index);
   }
 
   void pop(this auto const& self, size_type n = 1) noexcept {
-    lua_pop(self.state_pointer(), static_cast<int>(n));
+    lua_pop(self.raw_state(), static_cast<int>(n));
   }
 
   void pop(this auto const& self, global var) noexcept {
-    lua_setglobal(self.state_pointer(), var.name());
+    lua_setglobal(self.raw_state(), var.name());
   }
 
   template <typename type>
@@ -310,7 +310,7 @@ struct common_stack_interface {
   }
 
   void remove(this auto const& self, index_type index) noexcept {
-    lua_remove(self.state_pointer(), index);
+    lua_remove(self.raw_state(), index);
   }
 
   // maybe use bitshift operators for that:
@@ -319,16 +319,16 @@ struct common_stack_interface {
   void rotate(this auto const& self,
               index_type index,
               difference_type rot) noexcept {
-    lua_rotate(self.state_pointer(), index, rot);
+    lua_rotate(self.raw_state(), index, rot);
   }
 
   // better name?
   void insert_top_at(this auto const& self, index_type index) noexcept {
-    lua_insert(self.state_pointer(), index);
+    lua_insert(self.raw_state(), index);
   }
 
   void copy(this auto const& self, index_type from, index_type to) noexcept {
-    lua_copy(self.state_pointer(), from, to);
+    lua_copy(self.raw_state(), from, to);
   }
 
   void swap(this auto const& self, index_type i, index_type j) noexcept {
@@ -340,6 +340,86 @@ struct common_stack_interface {
     self.copy(j, i);         // stack[i] = stack[j];
     self.move_top_to(j);     // stack[j] = tmp;
   }
+
+  auto load(this auto const& self, czstring str) noexcept -> status_code {
+    return static_cast<status_code>(luaL_loadstring(self.raw_state(), str));
+  }
+
+  auto load(this auto const& self, std::string const& str) noexcept
+      -> status_code {
+    return self.load(str.c_str());
+  }
+
+  auto load(this auto const& self,
+            std::string_view str,
+            name_type name = nullptr) noexcept -> status_code {
+    return static_cast<status_code>(
+        luaL_loadbuffer(self.raw_state(), str.data(), str.size(), name));
+  }
+
+  auto load_file(this const auto& self,
+                 std::filesystem::path const& path) noexcept -> status_code {
+    return static_cast<status_code>(
+        luaL_loadfile(self.raw_state(), path.string().c_str()));
+  }
+
+  // void call(this auto const& self, size_type in) {
+  //   lua_call(self.raw_state(), static_cast<int>(in), LUA_MULTRET);
+  // }
+
+  // void call(this auto const& self, size_type in, size_type out) {
+  //   lua_call(self.raw_state(), static_cast<int>(in), static_cast<int>(out));
+  // }
+
+  // template <typename input_type, typename output_type>
+  // struct prototype : input_type, output_type {};
+
+  // template <size_type size>
+  // struct static_input {
+  //   static constexpr auto input_size() noexcept -> int { return size; }
+  // };
+
+  // struct input {
+  //   size_type size{};
+  //   constexpr auto input_size() noexcept -> int { return size; }
+  // };
+  // template <size_type size>
+  // constexpr auto input() noexcept {
+  //   return static_input<size>();
+  // }
+  // constexpr auto input(size_type size) noexcept { return input{size}; }
+
+  // template <size_type size>
+  // struct static_output {
+  //   static constexpr auto output_size() noexcept -> int { return size; }
+  // };
+
+  // struct output {
+  //   size_type size{};
+  //   constexpr auto output_size() noexcept -> int { return size; }
+  // };
+
+  // struct any_output {
+  //   static constexpr auto output_size() noexcept -> int { return LUA_MULTRET; }
+  // };
+
+  // template <size_type input, size_type output>
+  // constexpr auto proto() noexcept {
+  //   return prototype<static_input<input>, static_output<output>>{};
+  // }
+
+  // template <size_type input>
+  // constexpr auto proto(size_type out) noexcept {
+  //   return prototype<static_input<input>, output>{out};
+  // }
+
+  // auto protected_call(this auto const& self,
+  //                     auto prototype,
+  //                     index_type message_handler = 0) noexcept -> status_code {
+  //   return static_cast<status_code>(
+  //       lua_pcall(self.raw_state(), prototype.input_size(),
+  //                 prototype.output_size(), message_handler));
+  // }
 };
 
 struct stack_view : common_stack_interface {
@@ -349,13 +429,11 @@ struct stack_view : common_stack_interface {
   using reference       = stack_reference;
   using iterator        = stack_iterator;
 
-  const state_pointer_type state;
+  const raw_state_type state;
 
-  constexpr stack_view(state_pointer_type ptr) noexcept : state{ptr} {}
+  constexpr stack_view(raw_state_type ptr) noexcept : state{ptr} {}
 
-  constexpr auto state_pointer() const noexcept -> state_pointer_type {
-    return state;
-  }
+  constexpr auto raw_state() const noexcept -> raw_state_type { return state; }
 
   constexpr auto operator[](index_type index) const noexcept -> stack_reference;
 
@@ -374,7 +452,7 @@ struct stack_view : common_stack_interface {
   auto ref_push(auto value) const noexcept -> stack_reference;
 
   friend constexpr bool operator==(stack_view x, stack_view y) noexcept {
-    return x.state_pointer() == y.state_pointer();
+    return x.raw_state() == y.raw_state();
   }
 };
 
@@ -395,16 +473,16 @@ struct stack_iterator : private stack_view {
       : stack_type{s}, index{i} {}
 
   constexpr auto operator=(stack_iterator other) noexcept -> stack_iterator& {
-    assert(state_pointer() == other.state_pointer());
+    assert(raw_state() == other.raw_state());
     stack_index() = other.stack_index();
     return *this;
   }
 
-  using stack_type::state_pointer;
+  using stack_type::raw_state;
 
   constexpr auto stack() const noexcept -> stack_type { return *this; }
 
-  // constexpr auto state_pointer() const noexcept -> state_pointer_type {
+  // constexpr auto raw_state() const noexcept -> raw_state_type {
   //   return state;
   // }
   constexpr auto stack_index() const noexcept -> index_type { return index; }
@@ -490,7 +568,7 @@ struct stack_iterator : private stack_view {
 struct stack_reference : private stack_view {
   using stack_type = stack_view;
 
-  using stack_type::state_pointer;
+  using stack_type::raw_state;
 
   const stack_index_type index;
 
@@ -532,13 +610,20 @@ struct stack_reference : private stack_view {
   auto type() const noexcept -> type_id { return stack().type(stack_index()); }
 
   auto type_name(type_id tid) const noexcept {
-    return lua_typename(state_pointer(), static_cast<int>(tid));
+    return lua_typename(raw_state(), static_cast<int>(tid));
   }
 
   auto type_name() const noexcept { return type_name(type()); }
 
+  operator bool() const noexcept { return stack().valid(stack_index()); }
+
+  // template <typename type>
+  // explicit operator type() const {
+  //   return stack().raw_cast<type>(stack_index());
+  // }
+
   template <typename type>
-  explicit operator type() const {
+  auto raw_cast() const noexcept {
     return stack().raw_cast<type>(stack_index());
   }
 
@@ -547,17 +632,14 @@ struct stack_reference : private stack_view {
       case type_id::nil:
         return std::invoke(std::forward<decltype(f)>(f), nil);
       case type_id::boolean:
-        return std::invoke(std::forward<decltype(f)>(f),
-                           static_cast<boolean>(*this));
+        return std::invoke(std::forward<decltype(f)>(f), raw_cast<boolean>());
       case type_id::integer:
-        return std::invoke(std::forward<decltype(f)>(f),
-                           static_cast<integer>(*this));
+        return std::invoke(std::forward<decltype(f)>(f), raw_cast<integer>());
       case type_id::number:
-        return std::invoke(std::forward<decltype(f)>(f),
-                           static_cast<number>(*this));
+        return std::invoke(std::forward<decltype(f)>(f), raw_cast<number>());
       case type_id::string:
         return std::invoke(std::forward<decltype(f)>(f),
-                           static_cast<std::string_view>(*this));
+                           raw_cast<std::string_view>());
       default:
         throw std::invalid_argument(type_name());
     }
@@ -587,11 +669,11 @@ struct stack_range {
 
   constexpr stack_range(stack_iterator first, stack_iterator last) noexcept
       : _it{first}, _size{static_cast<size_type>(last - first)} {
-    assert(first.state_pointer() == last.state_pointer());
+    assert(first.raw_state() == last.raw_state());
   }
 
-  constexpr auto state_pointer() const noexcept -> state_pointer_type {
-    return _it.state_pointer();
+  constexpr auto raw_state() const noexcept -> raw_state_type {
+    return _it.raw_state();
   }
 
   constexpr auto size() const noexcept -> size_type { return _size; }
@@ -662,11 +744,11 @@ constexpr auto stack_view::operator[](index_type index) const noexcept
 }
 
 constexpr auto stack_view::begin() const noexcept -> iterator {
-  return iterator{state_pointer(), 1};
+  return iterator{raw_state(), 1};
 }
 
 constexpr auto stack_view::end() const noexcept {
-  return iterator{state_pointer(), 1 + static_cast<index_type>(size())};
+  return iterator{raw_state(), 1 + static_cast<index_type>(size())};
   // return iterator::end();
 }
 
@@ -675,7 +757,7 @@ inline auto stack_view::top() const noexcept -> stack_reference {
 }
 
 inline void stack_view::push(stack_reference value) const noexcept {
-  assert(value.state_pointer() == state_pointer());
+  assert(value.raw_state() == raw_state());
   push_copy_from(value.stack_index());
 }
 

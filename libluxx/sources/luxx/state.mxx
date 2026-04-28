@@ -44,46 +44,42 @@ auto default_panic(lua_State* L) noexcept -> int {
 // Letting `state` inherit from `state_view` may lead to object slicing.
 // This is mostly what we want. However, it allows us to create a view
 // from an rvalue which we want to prevent.
-struct state_base {
-  // In the Lua C API, almost every function modifies the Lua state.
-  // So, we don't bother with access via `const lua_State*`.
-  using native_handle_type = lua_State*;
-
+struct common_state_interface {
   void at_panic(this auto const& self, lua_CFunction panic) noexcept {
-    lua_atpanic(self.native_handle(), panic);
+    lua_atpanic(self.raw_state(), panic);
   }
 
   void open_stdlibs(this auto const& self) noexcept {
-    luaL_openlibs(self.native_handle());
+    luaL_openlibs(self.raw_state());
   }
 
   auto load(this auto const& self, czstring str) noexcept {
-    return luaL_loadstring(self.native_handle(), str);
+    return luaL_loadstring(self.raw_state(), str);
   }
 
   auto load(this auto const& self,
             std::string_view str,
             czstring name = nullptr) noexcept {
-    return luaL_loadbuffer(self.native_handle(), str.data(), str.size(), name);
+    return luaL_loadbuffer(self.raw_state(), str.data(), str.size(), name);
   }
 
   auto load_file(this const auto& self,
                  std::filesystem::path const& path) noexcept {
-    return luaL_loadfile(self.native_handle(), path.string().c_str());
+    return luaL_loadfile(self.raw_state(), path.string().c_str());
   }
 
   auto protected_call(this auto const& self, int in, int out, int msgh = 0) {
-    return lua_pcall(self.native_handle(), in, out, msgh);
+    return lua_pcall(self.raw_state(), in, out, msgh);
   }
 
   [[nodiscard]] auto eval(this auto const& self, std::string_view str) noexcept
       -> std::expected<stack_range, error> {
-    stack_view stack{self.native_handle()};
+    stack_view stack{self.raw_state()};
     const auto first  = stack.end();
     const auto status = static_cast<status_code>(
         self.load(str) || self.protected_call(0, LUA_MULTRET));
     if (status != status_code::ok)
-      return std::unexpected(error{status, static_cast<string>(stack.top())});
+      return std::unexpected(error{status, stack.top().raw_cast<string>()});
     return stack_range{first, stack.end()};
   }
 
@@ -94,7 +90,7 @@ struct state_base {
 
   auto operator[](this auto const& self, global var) noexcept
       -> global_reference {
-    return global_reference{stack_view{self.native_handle()}, var};
+    return global_reference{stack_view{self.raw_state()}, var};
   }
 
   auto operator[](this auto const& self, name_type name) noexcept {
@@ -233,8 +229,8 @@ struct default_allocator {
 };
 
 template <typename allocator_type = default_allocator>
-struct state : state_base, private allocator_type {
-  using base      = state_base;
+struct state : common_state_interface, private allocator_type {
+  using base      = common_state_interface;
   using allocator = allocator_type;
 
   state()
@@ -253,12 +249,12 @@ struct state : state_base, private allocator_type {
     requires stateful_allocator<allocator> && std::copyable<allocator>
       : allocator{alloc} {}
 
-  constexpr auto native_handle() const noexcept -> native_handle_type {
-    return handle.get();
+  constexpr auto raw_state() const noexcept -> raw_state_type {
+    return _raw_state.get();
   }
 
-  constexpr operator native_handle_type() const noexcept {
-    return handle.get();
+  constexpr operator raw_state_type() const noexcept {
+    return _raw_state.get();
   }
 
  private:
@@ -270,7 +266,7 @@ struct state : state_base, private allocator_type {
   }
 
   void init() {
-    if (not handle) [[unlikely]]
+    if (not _raw_state) [[unlikely]]
       throw std::bad_alloc();
     at_panic(default_panic);
   }
@@ -281,30 +277,30 @@ struct state : state_base, private allocator_type {
     }
   };
 
-  std::unique_ptr<lua_State, deleter> handle{
+  std::unique_ptr<lua_State, deleter> _raw_state{
       valid_new_state(static_cast<allocator const&>(*this))};
 };
 
 template <stateless_standard_allocator allocator>
 state(allocator) -> state<as_allocator_interface<allocator>>;
 
-struct state_view : state_base {
-  using base = state_base;
+struct state_view : common_state_interface {
+  using base = common_state_interface;
 
   template <typename allocator>
-  state_view(state<allocator> const& s) noexcept : handle{s.native_handle()} {}
+  state_view(state<allocator> const& s) noexcept : _raw_state{s.raw_state()} {}
 
   template <typename allocator>
   state_view(state<allocator> const&&) = delete ("cannot bind rvalue to view");
 
-  constexpr auto native_handle() const noexcept -> native_handle_type {
-    return handle;
+  constexpr auto raw_state() const noexcept -> raw_state_type {
+    return _raw_state;
   }
 
-  constexpr operator native_handle_type() const noexcept { return handle; }
+  constexpr operator raw_state_type() const noexcept { return _raw_state; }
 
  private:
-  const native_handle_type handle{};
+  const raw_state_type _raw_state{};
 };
 
 }  // namespace luxx

@@ -26,11 +26,11 @@ export namespace luxx {
 
 // In the Lua C API, almost every function modifies the Lua state.
 // So, we don't bother with access via `const lua_State*`.
-using state_pointer_type = lua_State*;
-using stack_index_type   = int;
-using index_type         = int;
-using size_type          = unsigned int;
-using difference_type    = int;
+using raw_state_type   = lua_State*;
+using stack_index_type = int;
+using index_type       = int;
+using size_type        = unsigned int;
+using difference_type  = int;
 
 using name_type = const char*;
 

@@ -19,7 +19,7 @@ import std;
 import luxx;
 
 void test(luxx::state_view lua) {
-  std::println("ptr = {}", static_cast<void*>(lua.native_handle()));
+  std::println("ptr = {}", static_cast<void*>(lua.raw_state()));
 }
 
 template <typename type>

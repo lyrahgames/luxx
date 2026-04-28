@@ -21,11 +21,11 @@ int main() {
     else {
       auto values = result.value();
       assert(values.size() == 2);
-      assert(static_cast<luxx::integer>(values[0]) == 54);
+      assert(safe_cast<luxx::integer>(values[0]) == 54);
       assert(values[0] == 54);
       assert(values[0] != "test");
       assert(values[0] != "54");
-      assert(static_cast<luxx::string>(values[1]) == "test");
+      assert(safe_cast<luxx::string>(values[1]) == "test");
       assert(values[1] == "test");
       assert(values[1] != 54);
       // std::println("value[1] = {}", static_cast<const char*>(values[1]));

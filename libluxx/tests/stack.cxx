@@ -1,3 +1,20 @@
+// Copyright © 2026 Markus Pawellek
+//
+// This file is part of `luxx`.
+//
+// `luxx` is free software: you can redistribute it and/or modify it
+// under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License,
+// or (at your option) any later version.
+//
+// `luxx` is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with `luxx`. If not, see <https://www.gnu.org/licenses/>.
+//
 #undef NDEBUG
 #include <cassert>
 import std;
@@ -49,6 +66,13 @@ void print(luxx::stack_view stack) {
 int main() {
   luxx::state lua{};
   luxx::stack_view stack{lua};
+
+  // assert(not stack[0]); // zero is strange
+  assert(not stack[1]);
+  assert(not stack[2]);
+  assert(not stack[3]);
+  assert(not stack[4]);
+
   stack.reserve(10);
 
   print(stack);
@@ -68,6 +92,11 @@ int main() {
   print(stack);
   assert(not stack.empty());
   assert(stack.size() == 7);
+  // assert(not stack[0]); // zero is strange
+  assert(stack[1]);
+  assert(stack[2]);
+  assert(stack[3]);
+  assert(stack[4]);
   assert(stack[1] == luxx::nil);
   assert(stack[2] == -123);
   assert(stack[3] == 3.14);
