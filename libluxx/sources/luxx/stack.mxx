@@ -736,6 +736,22 @@ struct global_reference : private stack_view, global {
     stack().push(static_cast<global>(*this));
     stack().top().visit(std::forward<decltype(f)>(f));
   }
+
+  friend inline bool operator==(global_reference x, auto y) noexcept {
+    // `safe_equal` is noexcept. So, `pop` will always be called.
+    // However, we need to ensure the stack has enough space...
+    x.stack().push(x);
+    const auto result = x.stack().safe_equal(-1, y);
+    x.stack().pop();
+    return result;
+  }
+
+  friend inline auto operator<=>(global_reference x, auto y) noexcept {
+    x.stack().push(x);
+    const auto result = x.stack().safe_compare(-1, y);
+    x.stack().pop();
+    return result;
+  }
 };
 
 constexpr auto stack_view::operator[](index_type index) const noexcept
@@ -779,6 +795,18 @@ inline auto lua_cast(stack_reference value) noexcept -> std::optional<type> {
 export template <typename type>
 inline auto safe_cast(stack_reference value) noexcept -> std::optional<type> {
   return value.stack().safe_cast<type>(value.stack_index());
+}
+
+export template <typename type>
+inline auto lua_cast(global_reference value) noexcept -> std::optional<type> {
+  value.stack().push(value);
+  return value.stack().try_pop<type>();
+}
+
+export template <typename type>
+inline auto safe_cast(global_reference value) noexcept -> std::optional<type> {
+  value.stack().push(value);
+  return value.stack().safe_pop<type>();
 }
 
 constexpr auto stack_iterator::operator*() const noexcept -> reference {

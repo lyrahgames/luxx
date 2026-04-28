@@ -114,6 +114,16 @@ int main() {
   auto var = lua["global_str"] = "global string";
   stack.push(var);
 
+  // for now, need to ask for number
+  // did not implement handling of strings that are popped from stack
+  lua["global_int"] = -123654;
+  assert(-123654 == safe_cast<luxx::integer>(lua["global_int"]));
+  assert(-123654 == lua["global_int"]);
+  assert(-150000 < lua["global_int"]);
+  assert(-123654 <= lua["global_int"]);
+  assert(lua["global_int"] <= -123654);
+  assert(lua["global_int"] < 0);
+
   // std::println("lua['global_str'] = {}", var);
 
   assert(stack.size() == 8);
